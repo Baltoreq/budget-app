@@ -1,410 +1,396 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { baseColorTokens, brand, semanticColorTokens, themeColors, typographyTokens, usageNotes } from './theme';
-import { fontFamilies } from './theme/fonts';
-import { cardShadow } from './theme/shadows';
+import { fontFamilies, radii, themeColors } from './theme';
 
-const typographyColumnFlex = [1.1, 1.5, 1.15, 0.7, 0.95, 1.15];
+const onboardingHero = require('./assets/onboarding-bg.png');
+const logoMark = require('./assets/logo.png');
+const incomeIcon = require('./assets/money-increase.png');
+const expenseIcon = require('./assets/decline_chart.png');
+const analyticsIcon = require('./assets/analytics_report.png');
 
-function SectionTitle({ index, title, subtitle }) {
+function AppLink({ label, onPress }) {
   return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>
-        {index}. {title}
-      </Text>
-      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
-    </View>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+      <Text style={styles.linkButtonText}>{label}</Text>
+    </Pressable>
   );
 }
 
-function ColorCard({ token }) {
+function HomeScreen({ onOpenOnboarding }) {
   return (
-    <View style={styles.colorCard}>
-      <View style={[styles.colorSwatch, { backgroundColor: token.hex }]} />
-      <View style={styles.colorCardBody}>
-        <Text style={styles.cardTitle}>{token.name}</Text>
-        <Text style={styles.cardCode}>{token.hex}</Text>
-        <Text style={styles.cardDescription}>{token.description}</Text>
+    <SafeAreaView style={styles.homeScreen}>
+      <View style={styles.homeGlowTop} />
+      <View style={styles.homeGlowBottom} />
+
+      <View style={styles.homeContent}>
+        <View style={styles.homeBrandRow}>
+          <Image source={logoMark} style={styles.homeBrandIcon} resizeMode="contain" />
+          <View style={styles.homeBrandTextWrap}>
+            <Text style={styles.homeBrandName}>
+              <Text style={styles.homeBrandNameDark}>Home</Text>
+              <Text style={styles.homeBrandNameBlue}>Budget</Text>
+            </Text>
+            <Text style={styles.homeBrandTagline}>Ekran startowy aplikacji</Text>
+          </View>
+        </View>
+
+        <View style={styles.homeCard}>
+          <Text style={styles.homeCardTitle}>Wejdź do onboarding&apos;u</Text>
+          <Text style={styles.homeCardText}>Otwórz ekran powitalny, aby zobaczyć układ przygotowany dokładnie pod załączony projekt.</Text>
+          <AppLink label="Otwórz onboarding" onPress={onOpenOnboarding} />
+        </View>
       </View>
-    </View>
-  );
-}
-
-function TableCell({ flex, children, alignEnd = false }) {
-  return <View style={[{ flex, alignItems: alignEnd ? 'flex-end' : 'flex-start' }]}>{children}</View>;
-}
-
-function TypographyRow({ token }) {
-  const sampleStyle = {
-    fontSize: token.size,
-    lineHeight: token.lineHeight,
-    fontWeight: String(token.weight),
-    color: token.sampleColor ?? themeColors.textPrimary,
-    fontFamily: token.fontFamily ?? fontFamilies.sans,
-    fontVariant: token.numeric ? ['tabular-nums'] : undefined,
-  };
-
-  return (
-    <View style={styles.typographyRow}>
-      <TableCell flex={typographyColumnFlex[0]}>
-        <Text style={styles.bodyText}>{token.role}</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[1]}>
-        <Text style={sampleStyle}>{token.sample}</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[2]}>
-        <Text style={styles.bodySmallText}>{token.family}</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[3]}>
-        <Text style={styles.bodySmallText}>{token.weight}</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[4]}>
-        <Text style={[styles.bodySmallText, styles.numericText]}>
-          {token.size}px / {token.lineHeight}px
-        </Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[5]}>
-        <Text style={styles.bodySmallText}>{token.usage}</Text>
-      </TableCell>
-    </View>
-  );
-}
-
-function TableHeader() {
-  return (
-    <View style={styles.tableHeader}>
-      <TableCell flex={typographyColumnFlex[0]}>
-        <Text style={styles.captionText}>Role</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[1]}>
-        <Text style={styles.captionText}>Sample</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[2]}>
-        <Text style={styles.captionText}>Recommended Family</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[3]}>
-        <Text style={styles.captionText}>Weight</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[4]}>
-        <Text style={styles.captionText}>Size / Line-Height</Text>
-      </TableCell>
-      <TableCell flex={typographyColumnFlex[5]}>
-        <Text style={styles.captionText}>Usage</Text>
-      </TableCell>
-    </View>
-  );
-}
-
-function NoteCard({ note }) {
-  return (
-    <View style={styles.noteCard}>
-      <View style={styles.noteIconWrap}>
-        <Text style={styles.noteIcon}>{note.icon}</Text>
-      </View>
-      <Text style={styles.noteText}>{note.text}</Text>
-    </View>
-  );
-}
-
-function GradientBlob({ style, color }) {
-  return <View pointerEvents="none" style={[styles.blob, { backgroundColor: color }, style]} />;
-}
-
-export default function App() {
-  return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.backgroundLayer}>
-        <GradientBlob color="rgba(79, 70, 229, 0.10)" style={styles.blobTopLeft} />
-        <GradientBlob color="rgba(14, 165, 164, 0.08)" style={styles.blobTopRight} />
-        <GradientBlob color="rgba(37, 99, 235, 0.08)" style={styles.blobBottom} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>{brand.mark}</Text>
-          </View>
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>{brand.name}</Text>
-            <Text style={styles.heroSubtitle}>{brand.tagline}</Text>
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.section}>
-          <SectionTitle index={1} title="Base Colors" />
-          <View style={styles.cardGrid}>
-            {baseColorTokens.map((token) => (
-              <ColorCard key={token.name} token={token} />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle index={2} title="Semantic Colors" />
-          <View style={styles.cardGrid}>
-            {semanticColorTokens.map((token) => (
-              <ColorCard key={token.name} token={token} />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle index={3} title="Typography" subtitle="All roles are defined from the shared design tokens." />
-          <View style={styles.typographyCard}>
-            <TableHeader />
-            {typographyTokens.map((token) => (
-              <TypographyRow key={token.role} token={token} />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle index={4} title="Usage Notes" />
-          <View style={styles.noteGrid}>
-            {usageNotes.map((note) => (
-              <NoteCard key={note.text} note={note} />
-            ))}
-          </View>
-        </View>
-      </ScrollView>
 
       <StatusBar style="dark" />
     </SafeAreaView>
   );
 }
 
+function FeatureCard({ icon, title, titleColor, description, cardHeight, iconSize, titleSize, descriptionSize }) {
+  return (
+    <View style={[styles.featureCard, { minHeight: cardHeight }]}>
+      <Image source={icon} style={[styles.featureIcon, { width: iconSize, height: iconSize }]} resizeMode="contain" />
+      <Text style={[styles.featureTitle, { color: titleColor, fontSize: titleSize, lineHeight: Math.round(titleSize * 1.28) }]}>{title}</Text>
+      <Text style={[styles.featureDescription, { fontSize: descriptionSize, lineHeight: Math.round(descriptionSize * 1.45) }]}>{description}</Text>
+    </View>
+  );
+}
+
+function OnboardingScreen() {
+  const { width, height } = useWindowDimensions();
+  const scale = Math.max(0.72, Math.min(1, height / 920));
+  const heroWidth = Math.min(width - 32, 700);
+  const heroHeight = Math.round(Math.min(width * 0.68, 300) * scale);
+  const titleFontSize = Math.round(40 * scale);
+  const titleLineHeight = Math.round(46 * scale);
+  const subtitleFontSize = Math.round(19 * scale);
+  const subtitleLineHeight = Math.round(26 * scale);
+  const featureCardHeight = Math.round(216 * scale);
+  const featureIconSize = Math.round(64 * scale);
+  const featureTitleFontSize = Math.round(16 * scale);
+  const featureDescriptionFontSize = Math.round(13 * scale);
+  const primaryButtonHeight = Math.round(68 * scale);
+  const primaryButtonFontSize = Math.round(28 * scale);
+
+  return (
+    <SafeAreaView style={styles.onboardingScreen}>
+      <View style={styles.onboardingBackground}>
+        <View style={styles.onboardingBlobTopLeft} />
+        <View style={styles.onboardingBlobTopRight} />
+        <View style={styles.onboardingBlobMid} />
+        <View style={styles.onboardingBlobBottom} />
+      </View>
+
+      <View style={styles.onboardingContent}>
+        <View style={styles.onboardingBrandRow}>
+          <Image source={logoMark} style={styles.onboardingBrandIcon} resizeMode="contain" />
+          <Text style={styles.onboardingBrandName}>
+            <Text style={styles.homeBrandNameDark}>Home</Text>
+            <Text style={styles.homeBrandNameBlue}>Budget</Text>
+          </Text>
+        </View>
+
+        <View style={[styles.heroFrame, { width: heroWidth, height: heroHeight }]}>
+          <Image source={onboardingHero} style={styles.heroImage} resizeMode="contain" />
+        </View>
+
+        <View style={styles.titleWrap}>
+          <Text style={[styles.title, { fontSize: titleFontSize, lineHeight: titleLineHeight }]}>{'Zadbaj o swój\ndomowy budżet'}</Text>
+          <Text style={[styles.subtitle, { fontSize: subtitleFontSize, lineHeight: subtitleLineHeight }]}>
+            {'Śledź wpływy i wydatki, twórz własne\nkategorie i kontroluj każdy miesiąc\nw jednym miejscu.'}
+          </Text>
+        </View>
+
+        <View style={styles.featureRow}>
+          <FeatureCard icon={incomeIcon} title="Wpływy" titleColor="#2ca63c" description={['Rejestruj dochody', 'i miej je pod kontrolą.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+          <FeatureCard icon={expenseIcon} title="Wydatki" titleColor="#ff6a1a" description={['Kategoryzuj wydatki', 'i nie przekraczaj limitów.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+          <FeatureCard icon={analyticsIcon} title="Analiza" titleColor="#2468f2" description={['Sprawdzaj raporty', 'i podejmuj lepsze decyzje.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+        </View>
+
+        <Pressable accessibilityRole="button" style={({ pressed }) => [styles.primaryButton, { minHeight: primaryButtonHeight }, pressed && styles.primaryButtonPressed]}>
+          <Text style={[styles.primaryButtonText, { fontSize: primaryButtonFontSize, lineHeight: Math.round(primaryButtonFontSize * 1.15) }]}>Zacznij</Text>
+        </Pressable>
+      </View>
+
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  const [screen, setScreen] = useState('home');
+
+  return screen === 'home' ? <HomeScreen onOpenOnboarding={() => setScreen('onboarding')} /> : <OnboardingScreen />;
+}
+
 const styles = StyleSheet.create({
-  screen: {
+  homeScreen: {
     flex: 1,
     backgroundColor: themeColors.background,
   },
-  backgroundLayer: {
+  homeGlowTop: {
+    position: 'absolute',
+    top: -140,
+    left: -120,
+    width: 300,
+    height: 300,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(37, 99, 235, 0.10)',
+  },
+  homeGlowBottom: {
+    position: 'absolute',
+    right: -160,
+    bottom: -120,
+    width: 320,
+    height: 320,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  homeContent: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 28,
+  },
+  homeBrandRow: {
+    alignItems: 'center',
+    gap: 14,
+  },
+  homeBrandIcon: {
+    width: 72,
+    height: 72,
+  },
+  homeBrandTextWrap: {
+    alignItems: 'center',
+  },
+  homeBrandName: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  homeBrandNameDark: {
+    color: '#0f1f4d',
+  },
+  homeBrandNameBlue: {
+    color: '#2468f2',
+  },
+  homeBrandTagline: {
+    marginTop: 4,
+    color: themeColors.textSecondary,
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: fontFamilies.sans,
+  },
+  homeCard: {
+    borderRadius: radii.card,
+    backgroundColor: themeColors.surface,
+    padding: 24,
+    gap: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 4,
+  },
+  homeCardTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+    color: themeColors.textPrimary,
+    textAlign: 'center',
+  },
+  homeCardText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: fontFamilies.sans,
+    color: themeColors.textSecondary,
+    textAlign: 'center',
+  },
+  linkButton: {
+    alignSelf: 'center',
+    minWidth: 180,
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#1f63ef',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkButtonPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.99 }],
+  },
+  linkButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  onboardingScreen: {
+    flex: 1,
+    backgroundColor: '#f7fbff',
+  },
+  onboardingBackground: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  blob: {
+  onboardingBlobTopLeft: {
     position: 'absolute',
-    borderRadius: 9999,
-  },
-  blobTopLeft: {
-    width: 260,
-    height: 260,
-    top: -100,
-    left: -100,
-  },
-  blobTopRight: {
-    width: 300,
-    height: 300,
-    top: 100,
-    right: -120,
-  },
-  blobBottom: {
+    top: -130,
+    left: -110,
     width: 360,
     height: 360,
-    bottom: -180,
-    left: '50%',
-    marginLeft: -180,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.68)',
   },
-  content: {
+  onboardingBlobTopRight: {
+    position: 'absolute',
+    top: 150,
+    right: -120,
+    width: 320,
+    height: 320,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(218,232,255,0.58)',
+  },
+  onboardingBlobMid: {
+    position: 'absolute',
+    top: 220,
+    left: 44,
+    width: 650,
+    height: 420,
+    borderRadius: 220,
+    backgroundColor: 'rgba(227,238,255,0.62)',
+  },
+  onboardingBlobBottom: {
+    position: 'absolute',
+    bottom: -110,
+    left: '8%',
+    right: '8%',
+    height: 170,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.84)',
+  },
+  onboardingContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 40,
-    gap: 24,
-  },
-  hero: {
+    paddingTop: 4,
+    paddingBottom: 12,
+    flex: 1,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
   },
-  logoMark: {
+  onboardingBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 28,
+    marginBottom: 8,
+  },
+  onboardingBrandIcon: {
     width: 58,
     height: 58,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 70, 229, 0.16)',
-    backgroundColor: 'rgba(79, 70, 229, 0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  logoMarkText: {
-    fontSize: 24,
-    lineHeight: 28,
-    color: themeColors.primary,
-    fontWeight: '700',
-  },
-  heroTextWrap: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  heroTitle: {
+  onboardingBrandName: {
     fontSize: 32,
-    lineHeight: 40,
-    fontWeight: '700',
-    letterSpacing: -0.8,
-    color: themeColors.textPrimary,
-  },
-  heroSubtitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: themeColors.textSecondary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: themeColors.border,
-  },
-  section: {
-    gap: 16,
-  },
-  sectionHeader: {
-    gap: 4,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    lineHeight: 32,
+    lineHeight: 38,
+    fontFamily: fontFamilies.sans,
     fontWeight: '700',
     letterSpacing: -0.4,
-    color: themeColors.textPrimary,
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: themeColors.textSecondary,
-  },
-  cardGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  colorCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    minWidth: 150,
-    backgroundColor: themeColors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    padding: 12,
-    shadowColor: cardShadow.shadowColor,
-    shadowOffset: cardShadow.shadowOffset,
-    shadowOpacity: cardShadow.shadowOpacity,
-    shadowRadius: cardShadow.shadowRadius,
-    elevation: cardShadow.elevation,
-  },
-  colorSwatch: {
-    width: 64,
-    height: 80,
-    borderRadius: 14,
-  },
-  colorCardBody: {
-    flex: 1,
-    gap: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: '600',
-    color: themeColors.textPrimary,
-  },
-  cardCode: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: themeColors.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  cardDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: themeColors.textSecondary,
-  },
-  typographyCard: {
-    backgroundColor: themeColors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    padding: 16,
-    shadowColor: cardShadow.shadowColor,
-    shadowOffset: cardShadow.shadowOffset,
-    shadowOpacity: cardShadow.shadowOpacity,
-    shadowRadius: cardShadow.shadowRadius,
-    elevation: cardShadow.elevation,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: themeColors.border,
-  },
-  typographyRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: themeColors.border,
-  },
-  bodyText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: themeColors.textPrimary,
-  },
-  bodySmallText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: themeColors.textSecondary,
-  },
-  captionText: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: themeColors.textMuted,
-  },
-  numericText: {
-    fontVariant: ['tabular-nums'],
-  },
-  noteGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  noteCard: {
-    flexBasis: '31%',
-    flexGrow: 1,
-    minWidth: 150,
-    backgroundColor: themeColors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    padding: 16,
-    gap: 12,
-    shadowColor: cardShadow.shadowColor,
-    shadowOffset: cardShadow.shadowOffset,
-    shadowOpacity: cardShadow.shadowOpacity,
-    shadowRadius: cardShadow.shadowRadius,
-    elevation: cardShadow.elevation,
-  },
-  noteIconWrap: {
+  heroFrame: {
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    backgroundColor: themeColors.surfaceAlt,
+    marginTop: 2,
+    marginBottom: 4,
+    flexShrink: 0,
   },
-  noteIcon: {
-    fontSize: 18,
-    lineHeight: 22,
-    color: themeColors.textPrimary,
-    fontWeight: '700',
+  heroImage: {
+    width: '100%',
+    height: '100%',
   },
-  noteText: {
+  titleWrap: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 0,
+  },
+  title: {
+    color: '#0d2a63',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '800',
     textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
-    color: themeColors.textPrimary,
+    letterSpacing: -0.6,
+  },
+  subtitle: {
+    color: '#667699',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+    maxWidth: 620,
+  },
+  featureRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  featureCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 26,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.8)',
+  },
+  featureIcon: {
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  featureTitle: {
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  featureDescription: {
+    color: '#667699',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+    minHeight: 40,
+  },
+  primaryButton: {
+    width: '100%',
+    marginTop: 4,
+    borderRadius: 26,
+    backgroundColor: '#1f63ef',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1f63ef',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  primaryButtonPressed: {
+    opacity: 0.92,
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
   },
 });
