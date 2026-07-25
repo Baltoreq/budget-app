@@ -15,7 +15,18 @@ export function deriveMonthFromDate(date: string): YearMonth {
     throw new Error("Nieprawidłowy format daty. Oczekiwano YYYY-MM-DD.");
   }
 
-  return `${match[1]}-${match[2]}` as YearMonth;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsedDate = new Date(year, month - 1, day);
+
+  const roundTripped = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
+
+  if (roundTripped !== date) {
+    throw new Error("Nieprawidłowa data. Użyj poprawnej daty kalendarzowej YYYY-MM-DD.");
+  }
+
+  return `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}` as YearMonth;
 }
 
 export function compareYearMonth(a: YearMonth, b: YearMonth): number {

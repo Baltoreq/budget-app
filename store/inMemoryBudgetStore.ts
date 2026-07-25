@@ -33,11 +33,34 @@ function assertDate(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new Error("Data operacji musi mieć format YYYY-MM-DD.");
   }
+
+  const [yearPart, monthPart, dayPart] = value.split("-");
+  const year = Number.parseInt(yearPart, 10);
+  const month = Number.parseInt(monthPart, 10);
+  const day = Number.parseInt(dayPart, 10);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error("Data operacji jest nieprawidłowa.");
+  }
 }
 
 function assertMonth(value: string): void {
   if (!/^\d{4}-\d{2}$/.test(value)) {
     throw new Error("Miesiąc przypisania musi mieć format YYYY-MM.");
+  }
+
+  const [yearPart, monthPart] = value.split("-");
+  const year = Number.parseInt(yearPart, 10);
+  const month = Number.parseInt(monthPart, 10);
+  const parsed = new Date(Date.UTC(year, month - 1, 1));
+
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month) {
+    throw new Error("Miesiąc przypisania jest nieprawidłowy.");
   }
 }
 
@@ -50,6 +73,18 @@ function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${random}`;
 }
 
+function cloneCategory(category: Category): Category {
+  return { ...category };
+}
+
+function cloneTransaction(transaction: BudgetTransaction): BudgetTransaction {
+  return { ...transaction };
+}
+
+function cloneOpeningBalanceOverride(override: OpeningBalanceOverride): OpeningBalanceOverride {
+  return { ...override };
+}
+
 export class InMemoryBudgetStore {
   private categories: Category[];
 
@@ -58,13 +93,14 @@ export class InMemoryBudgetStore {
   private openingBalanceOverrides: OpeningBalanceOverride[];
 
   constructor(seed: BudgetDataSeed) {
-    this.categories = [...seed.categories];
-    this.transactions = [...seed.transactions];
-    this.openingBalanceOverrides = [...seed.openingBalanceOverrides];
+    this.categories = seed.categories.map(cloneCategory);
+    this.transactions = seed.transactions.map(cloneTransaction);
+    this.openingBalanceOverrides = seed.openingBalanceOverrides.map(cloneOpeningBalanceOverride);
   }
 
   getCategories(type?: Category["type"]): Category[] {
-    return type ? this.categories.filter((category) => category.type === type) : [...this.categories];
+    const selected = type ? this.categories.filter((category) => category.type === type) : this.categories;
+    return selected.map(cloneCategory);
   }
 
   addCategory(input: NewCategoryInput): Category {
@@ -93,7 +129,7 @@ export class InMemoryBudgetStore {
     };
 
     this.categories.push(category);
-    return category;
+    return cloneCategory(category);
   }
 
   updateCategory(categoryId: string, input: UpdateCategoryInput): Category {
@@ -130,7 +166,7 @@ export class InMemoryBudgetStore {
     };
 
     this.categories[index] = updated;
-    return updated;
+    return cloneCategory(updated);
   }
 
   deleteCategory(categoryId: string): void {
@@ -195,7 +231,7 @@ export class InMemoryBudgetStore {
       return b.amountMinor - a.amountMinor;
     });
 
-    return sorted;
+    return sorted.map(cloneTransaction);
   }
 
   addTransaction(input: NewTransactionInput): BudgetTransaction {
@@ -228,7 +264,7 @@ export class InMemoryBudgetStore {
     };
 
     this.transactions.push(tx);
-    return tx;
+    return cloneTransaction(tx);
   }
 
   updateTransaction(transactionId: string, input: UpdateTransactionInput): BudgetTransaction {
@@ -272,7 +308,7 @@ export class InMemoryBudgetStore {
     };
 
     this.transactions[index] = updated;
-    return updated;
+    return cloneTransaction(updated);
   }
 
   deleteTransaction(transactionId: string): void {
@@ -283,6 +319,8 @@ export class InMemoryBudgetStore {
     if (!Number.isInteger(amountMinor)) {
       throw new Error("Saldo początkowe musi być liczbą całkowitą w mniejszych jednostkach.");
     }
+
+    assertMonth(month);
 
     const existingIndex = this.openingBalanceOverrides.findIndex((item) => item.month === month);
     const nextValue: OpeningBalanceOverride = {
@@ -300,7 +338,7 @@ export class InMemoryBudgetStore {
   }
 
   getOpeningBalanceOverrides(): OpeningBalanceOverride[] {
-    return [...this.openingBalanceOverrides];
+    return this.openingBalanceOverrides.map(cloneOpeningBalanceOverride);
   }
 
   getMonthlyBudgets(): ReturnType<typeof calculateMonthlyBudgets> {
