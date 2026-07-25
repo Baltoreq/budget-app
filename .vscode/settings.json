@@ -4,6 +4,10 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "npx tsc": true
+        "npx tsc": true,
+        "/^npx expo export --platform ios --clear$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }
