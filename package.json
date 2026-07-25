@@ -19,8 +19,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
     "@types/react": "~19.1.10",
-    "babel-preset-expo": "^57.0.3",
-    "nativewind": "^4.2.6",
+    "babel-preset-expo": "~54.0.10",
     "tailwindcss": "^4.3.2",
     "typescript": "~5.9.2"
   },

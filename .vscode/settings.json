@@ -4,6 +4,11 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "npx tsc": true
+        "npx tsc": true,
+        "/^Get-Content \\.vscode/settings\\.json -Raw \\| ConvertFrom-Json \\| Out-Null; Write-Output \"JSON_OK\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "npm run -s typecheck": true
     }
 }
