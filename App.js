@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Image, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { budgetStore } from './store';
 import { fontFamilies, radii, themeColors } from './theme';
@@ -11,6 +11,7 @@ const incomeIcon = require('./assets/money-increase.png');
 const expenseIcon = require('./assets/decline_chart.png');
 const analyticsIcon = require('./assets/analytics_report.png');
 const calendarIcon = require('./assets/calendar.png');
+const backArrowIcon = require('./assets/back-arrow.png');
 const addIcon = require('./assets/add.png');
 const openingBalanceMetricIcon = require('./assets/opening balance.png');
 const incomeMetricIcon = require('./assets/income.png');
@@ -21,6 +22,11 @@ const transportCategoryIcon = require('./assets/transport.png');
 const rentCategoryIcon = require('./assets/rent.png');
 const entertainmentCategoryIcon = require('./assets/entertainment.png');
 const othersCategoryIcon = require('./assets/others.png');
+const searchIcon = require('./assets/search.png');
+const walletIcon = require('./assets/wallet.png');
+const transferIcon = require('./assets/transfer.png');
+const shoppingBagIcon = require('./assets/shopping-bag.png');
+const moneyBagIcon = require('./assets/money-bag.png');
 
 const monthFormatter = new Intl.DateTimeFormat('pl-PL', {
   month: 'long',
@@ -39,6 +45,24 @@ const currencyFormatter = new Intl.NumberFormat('pl-PL', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const operationDateDisplayFormatter = new Intl.DateTimeFormat('pl-PL', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  weekday: 'short',
+});
+
+const operationWeekdayFormatter = new Intl.DateTimeFormat('pl-PL', {
+  weekday: 'short',
+});
+
+const operationMonthDisplayFormatter = new Intl.DateTimeFormat('pl-PL', {
+  month: 'long',
+  year: 'numeric',
+});
+
+const calendarWeekdayLabels = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
 
 function formatMinorCurrency(amountMinor) {
   return currencyFormatter.format(amountMinor / 100);
@@ -98,6 +122,40 @@ function resolveCategoryIcon(name) {
   }
 
   return null;
+}
+
+function resolveCategoryIconFromKey(iconKey) {
+  if (!iconKey) {
+    return null;
+  }
+
+  const normalized = iconKey.trim().toLowerCase();
+
+  if (normalized === 'briefcase' || normalized === 'wallet') {
+    return walletIcon;
+  }
+
+  if (normalized === 'laptop' || normalized === 'transfer') {
+    return transferIcon;
+  }
+
+  if (normalized === 'shopping-cart' || normalized === 'shopping-bag') {
+    return shoppingBagIcon;
+  }
+
+  if (normalized === 'home' || normalized === 'money-bag') {
+    return moneyBagIcon;
+  }
+
+  return null;
+}
+
+function normalizeSearchValue(value) {
+  return value
+    .trim()
+    .toLocaleLowerCase('pl-PL')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function buildDonutSegments(entries, totalAmountMinor) {
@@ -238,6 +296,89 @@ function AppLink({ label, onPress }) {
   );
 }
 
+function formatOperationDateWithWeekday(date) {
+  const formattedDate = dateFormatter.format(date);
+  const rawWeekday = operationWeekdayFormatter.format(date).replace(',', '').trim();
+  const weekday = rawWeekday.endsWith('.') ? rawWeekday : `${rawWeekday}.`;
+
+  return `${formattedDate} (${weekday})`;
+}
+
+function formatOperationMonthFromDate(date) {
+  const formatted = operationMonthDisplayFormatter.format(date);
+  return `${formatted.charAt(0).toUpperCase()}${formatted.slice(1)}`;
+}
+
+function normalizeAmountInput(rawValue) {
+  const compact = rawValue.replace(/\s+/g, '');
+  const digitsAndSeparators = compact.replace(/[^\d.,]/g, '');
+  const normalizedDecimal = digitsAndSeparators.replace(/\./g, ',');
+  const [integerPart = '', ...fractionParts] = normalizedDecimal.split(',');
+  const mergedFraction = fractionParts.join('').slice(0, 2);
+
+  if (fractionParts.length === 0) {
+    return integerPart;
+  }
+
+  return `${integerPart},${mergedFraction}`;
+}
+
+function parseAmountInputToMinor(value) {
+  const normalized = value.replace(',', '.');
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.round(parsed * 100);
+}
+
+function isSameLocalDate(left, right) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function buildCalendarMonthCells(viewMonthDate) {
+  const year = viewMonthDate.getFullYear();
+  const month = viewMonthDate.getMonth();
+  const firstDayWeekIndex = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+  const cells = [];
+
+  for (let idx = 0; idx < 42; idx += 1) {
+    const dayNumber = idx - firstDayWeekIndex + 1;
+
+    if (dayNumber <= 0) {
+      cells.push({
+        key: `prev-${idx}`,
+        date: new Date(year, month - 1, daysInPrevMonth + dayNumber),
+        isInCurrentMonth: false,
+      });
+      continue;
+    }
+
+    if (dayNumber > daysInCurrentMonth) {
+      cells.push({
+        key: `next-${idx}`,
+        date: new Date(year, month + 1, dayNumber - daysInCurrentMonth),
+        isInCurrentMonth: false,
+      });
+      continue;
+    }
+
+    cells.push({
+      key: `current-${dayNumber}`,
+      date: new Date(year, month, dayNumber),
+      isInCurrentMonth: true,
+    });
+  }
+
+  return cells;
+}
+
 function HomeScreen({ onOpenOnboarding }) {
   return (
     <SafeAreaView style={styles.homeScreen}>
@@ -292,7 +433,7 @@ function DashboardMetricCard({ iconSource, label, value, valueColor, iconWrapSty
   );
 }
 
-function DashboardScreen({ onBackHome }) {
+function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
   const dashboardData = useMemo(() => {
     const budgets = budgetStore.getMonthlyBudgets();
     const transactions = budgetStore.getTransactions();
@@ -639,7 +780,7 @@ function DashboardScreen({ onBackHome }) {
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" style={styles.dashboardAddButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dodaj operację" style={styles.dashboardAddButton} onPress={onOpenAddTransaction}>
           <View style={styles.dashboardAddButtonRow}>
             <Image source={addIcon} resizeMode="contain" style={styles.dashboardAddIcon} />
             <Text style={styles.dashboardAddButtonText}>Dodaj operację</Text>
@@ -657,6 +798,396 @@ function DashboardScreen({ onBackHome }) {
           <Text style={styles.dashboardBackButtonText}>Powrót do ekranu startowego</Text>
         </Pressable>
       </ScrollView>
+
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
+function AddTransactionScreen({ onBack, onSave }) {
+  const addTxScrollRef = useRef(null);
+  const [type, setType] = useState('income');
+  const [operationDate, setOperationDate] = useState(() => new Date());
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarViewMonth, setCalendarViewMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [amountInput, setAmountInput] = useState('0,00');
+  const [descriptionInput, setDescriptionInput] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(() => budgetStore.getCategories('income')[0]?.id ?? null);
+  const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
+  const [categoryDraftId, setCategoryDraftId] = useState(null);
+  const [categorySearchInput, setCategorySearchInput] = useState('');
+  const [isCategorySearchFocused, setIsCategorySearchFocused] = useState(false);
+  const isIncome = type === 'income';
+  const calendarCells = useMemo(() => buildCalendarMonthCells(calendarViewMonth), [calendarViewMonth]);
+  const calendarMonthLabel = formatOperationMonthFromDate(calendarViewMonth);
+  const amountMinor = useMemo(() => parseAmountInputToMinor(amountInput), [amountInput]);
+  const amountHasError = amountMinor === null || amountMinor <= 0;
+  const categoriesForType = useMemo(() => budgetStore.getCategories(type), [type]);
+  const selectedCategory = useMemo(
+    () => categoriesForType.find((category) => category.id === selectedCategoryId) ?? null,
+    [categoriesForType, selectedCategoryId],
+  );
+  const categorySearchQuery = useMemo(() => normalizeSearchValue(categorySearchInput), [categorySearchInput]);
+  const visibleCategories = useMemo(() => {
+    if (!categorySearchQuery) {
+      return categoriesForType;
+    }
+
+    return categoriesForType.filter((category) => normalizeSearchValue(category.name).includes(categorySearchQuery));
+  }, [categoriesForType, categorySearchQuery]);
+
+  useEffect(() => {
+    if (categoriesForType.length === 0) {
+      setSelectedCategoryId(null);
+      return;
+    }
+
+    const stillValid = categoriesForType.some((category) => category.id === selectedCategoryId);
+
+    if (!stillValid) {
+      setSelectedCategoryId(categoriesForType[0].id);
+    }
+  }, [categoriesForType, selectedCategoryId]);
+
+  const openCalendar = () => {
+    setCalendarViewMonth(new Date(operationDate.getFullYear(), operationDate.getMonth(), 1));
+    setIsCalendarOpen(true);
+  };
+
+  const openCategoryPicker = () => {
+    setCategorySearchInput('');
+    setIsCategorySearchFocused(false);
+    setCategoryDraftId(selectedCategoryId ?? categoriesForType[0]?.id ?? null);
+    setIsCategoryPickerOpen(true);
+  };
+
+  const saveCategorySelection = () => {
+    setSelectedCategoryId(categoryDraftId ?? null);
+    setIsCategorySearchFocused(false);
+    setIsCategoryPickerOpen(false);
+  };
+
+  const categoryAccentColor = selectedCategory?.color ?? (isIncome ? themeColors.income : themeColors.expense);
+  const selectedCategoryIcon = selectedCategory
+    ? resolveCategoryIconFromKey(selectedCategory.icon) ?? resolveCategoryIcon(selectedCategory.name)
+    : null;
+
+  return (
+    <SafeAreaView style={styles.addTxScreen}>
+      <View style={styles.addTxGlowTop} />
+
+      <KeyboardAvoidingView
+        style={styles.addTxKeyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        <ScrollView
+          ref={addTxScrollRef}
+          style={styles.addTxScroll}
+          contentContainerStyle={styles.addTxScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          automaticallyAdjustKeyboardInsets
+        >
+        <Pressable accessibilityRole="button" accessibilityLabel="Wróć do dashboardu" style={styles.addTxBackButton} onPress={onBack}>
+          <Image source={backArrowIcon} resizeMode="cover" style={styles.addTxBackButtonImage} />
+        </Pressable>
+
+        <Text style={styles.addTxTitle}>Dodaj operację</Text>
+
+        <View style={styles.addTxTypeSegment}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: isIncome }}
+            style={[styles.addTxTypeButton, isIncome && styles.addTxTypeButtonIncomeActive]}
+            onPress={() => setType('income')}
+          >
+            <Image source={incomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
+            <Text style={[styles.addTxTypeText, isIncome && styles.addTxTypeTextIncome]}>Wpływ</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: !isIncome }}
+            style={[styles.addTxTypeButton, !isIncome && styles.addTxTypeButtonExpenseActive]}
+            onPress={() => setType('expense')}
+          >
+            <Image source={outcomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
+            <Text style={[styles.addTxTypeText, !isIncome && styles.addTxTypeTextExpense]}>Wydatek</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.addTxCard}>
+          <Text style={styles.addTxFieldLabel}>Kwota</Text>
+          <View style={styles.addTxAmountInputRow}>
+            <TextInput
+              style={styles.addTxAmountInput}
+              value={amountInput}
+              onChangeText={(text) => setAmountInput(normalizeAmountInput(text))}
+              keyboardType="decimal-pad"
+              placeholder="0,00"
+              placeholderTextColor={themeColors.textMuted}
+              accessibilityLabel="Kwota operacji"
+            />
+            <Text style={styles.addTxAmountCurrency}>zł</Text>
+          </View>
+          {amountHasError ? <Text style={styles.addTxErrorText}>Kwota musi być większa od zera</Text> : null}
+        </View>
+
+        <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCalendar}>
+          <Text style={styles.addTxFieldLabel}>Data operacji</Text>
+          <View style={styles.addTxInlineValueRow}>
+            <Image source={calendarIcon} resizeMode="contain" style={styles.addTxInlineImageIcon} />
+            <Text style={styles.addTxInlineValue}>{formatOperationDateWithWeekday(operationDate)}</Text>
+          </View>
+        </Pressable>
+
+        <View style={[styles.addTxCard, styles.addTxCardDisabled]}>
+          <Text style={[styles.addTxFieldLabel, styles.addTxFieldLabelDisabled]}>Miesiąc operacji</Text>
+          <View style={styles.addTxInlineValueRowReadOnly}>
+            <Text style={[styles.addTxInlineValue, styles.addTxInlineValueDisabled]}>{formatOperationMonthFromDate(operationDate)}</Text>
+          </View>
+        </View>
+
+        <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCategoryPicker}>
+          <Text style={styles.addTxFieldLabel}>Kategoria</Text>
+          <View style={styles.addTxCategoryRow}>
+            <View style={[styles.addTxCategoryBadge, { backgroundColor: categoryPillBackground(categoryAccentColor) }]}>
+              {selectedCategoryIcon ? (
+                <Image source={selectedCategoryIcon} resizeMode="contain" style={styles.addTxCategoryBadgeImage} />
+              ) : (
+                <Text style={[styles.addTxCategoryBadgeIcon, { color: categoryAccentColor }]}>{selectedCategory ? categoryShortLabel(selectedCategory.name) : '?'}</Text>
+              )}
+            </View>
+            <Text style={styles.addTxCategoryText}>{selectedCategory?.name ?? 'Wybierz kategorię'}</Text>
+            <Text style={styles.addTxCategoryChevron}>›</Text>
+          </View>
+        </Pressable>
+
+        <View style={styles.addTxCard}>
+          <Text style={styles.addTxFieldLabel}>Opis (opcjonalnie)</Text>
+          <View style={styles.addTxDescriptionBox}>
+            <TextInput
+              style={styles.addTxDescriptionInput}
+              placeholder="Dodaj opis..."
+              placeholderTextColor={themeColors.textMuted}
+              multiline
+              value={descriptionInput}
+              onChangeText={setDescriptionInput}
+              maxLength={120}
+              textAlignVertical="top"
+              onFocus={() => addTxScrollRef.current?.scrollToEnd({ animated: true })}
+            />
+            <Text style={styles.addTxCounterText}>{descriptionInput.length}/120</Text>
+          </View>
+        </View>
+
+        <View style={styles.addTxInfoCard}>
+          <Text style={styles.addTxInfoIcon}>◌</Text>
+          <View style={styles.addTxInfoContent}>
+            <Text style={styles.addTxInfoTitle}>Informacja</Text>
+            <Text style={styles.addTxInfoText}>
+              Miesiąc operacji jest uzupełniany automatycznie na podstawie podanej daty i nie można go zmienić ręcznie.
+            </Text>
+          </View>
+        </View>
+
+        <Pressable accessibilityRole="button" style={styles.addTxSaveButton} onPress={onSave}>
+          <Text style={styles.addTxSaveButtonText}>Zapisz operację</Text>
+        </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <Modal visible={isCalendarOpen} transparent animationType="fade" onRequestClose={() => setIsCalendarOpen(false)}>
+        <View style={styles.calendarModalOverlay}>
+          <Pressable style={styles.calendarModalBackdrop} onPress={() => setIsCalendarOpen(false)} />
+
+          <View style={styles.calendarModalCard}>
+            <View style={styles.calendarModalHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Poprzedni miesiąc"
+                style={styles.calendarNavButton}
+                onPress={() => setCalendarViewMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+              >
+                <Text style={styles.calendarNavButtonText}>‹</Text>
+              </Pressable>
+
+              <Text style={styles.calendarModalHeaderTitle}>{calendarMonthLabel}</Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Następny miesiąc"
+                style={styles.calendarNavButton}
+                onPress={() => setCalendarViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+              >
+                <Text style={styles.calendarNavButtonText}>›</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.calendarWeekdaysRow}>
+              {calendarWeekdayLabels.map((label) => (
+                <Text key={label} style={styles.calendarWeekdayLabel}>{label}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarCells.map((cell) => {
+                const isSelected = isSameLocalDate(cell.date, operationDate);
+
+                return (
+                  <Pressable
+                    key={cell.key}
+                    accessibilityRole="button"
+                    style={[
+                      styles.calendarDayCell,
+                      !cell.isInCurrentMonth && styles.calendarDayCellOutOfMonth,
+                      isSelected && styles.calendarDayCellSelected,
+                    ]}
+                    onPress={() => {
+                      setOperationDate(cell.date);
+                      setCalendarViewMonth(new Date(cell.date.getFullYear(), cell.date.getMonth(), 1));
+                      setIsCalendarOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayCellText,
+                        !cell.isInCurrentMonth && styles.calendarDayCellTextOutOfMonth,
+                        isSelected && styles.calendarDayCellTextSelected,
+                      ]}
+                    >
+                      {cell.date.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable accessibilityRole="button" style={styles.calendarCloseButton} onPress={() => setIsCalendarOpen(false)}>
+              <Text style={styles.calendarCloseButtonText}>Anuluj</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isCategoryPickerOpen} animationType="slide" onRequestClose={() => setIsCategoryPickerOpen(false)}>
+        <SafeAreaView style={styles.selectCategoryScreen}>
+          <View style={styles.selectCategoryGlowTop} />
+
+          <View style={styles.selectCategoryContainer}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Wróć do formularza"
+              style={styles.selectCategoryBackButton}
+              onPress={() => setIsCategoryPickerOpen(false)}
+            >
+              <Image source={backArrowIcon} resizeMode="cover" style={styles.addTxBackButtonImage} />
+            </Pressable>
+
+            <Text style={styles.selectCategoryTitle}>Wybierz kategorię</Text>
+
+            <View style={styles.selectCategoryTypePillWrap}>
+              <View style={[styles.selectCategoryTypePill, isIncome ? styles.selectCategoryTypePillIncome : styles.selectCategoryTypePillExpense]}>
+                <Text style={[styles.selectCategoryTypePillArrow, isIncome ? styles.selectCategoryTypePillArrowIncome : styles.selectCategoryTypePillArrowExpense]}>
+                  ↗
+                </Text>
+                <Text style={[styles.selectCategoryTypePillText, isIncome ? styles.selectCategoryTypePillTextIncome : styles.selectCategoryTypePillTextExpense]}>
+                  {isIncome ? 'Wpływ' : 'Wydatek'}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.selectCategoryHint}>Pokazano tylko kategorie pasujące do typu operacji.</Text>
+
+            <View style={styles.selectCategorySearchBox}>
+              <Image source={searchIcon} resizeMode="contain" style={styles.selectCategorySearchIcon} />
+              <TextInput
+                style={styles.selectCategorySearchInput}
+                value={categorySearchInput}
+                onChangeText={setCategorySearchInput}
+                onFocus={() => setIsCategorySearchFocused(true)}
+                onBlur={() => setIsCategorySearchFocused(false)}
+                placeholder="Szukaj kategorii"
+                placeholderTextColor="#8c99b6"
+                accessibilityLabel="Szukaj kategorii"
+              />
+            </View>
+
+            <ScrollView
+              style={styles.selectCategoryList}
+              contentContainerStyle={styles.selectCategoryListContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            >
+              {visibleCategories.length === 0 ? (
+                <View style={styles.selectCategoryEmptyCard}>
+                  <Text style={styles.selectCategoryEmptyTitle}>Brak wyników</Text>
+                  <Text style={styles.selectCategoryEmptyText}>Zmień wpisaną frazę, aby znaleźć kategorię.</Text>
+                </View>
+              ) : (
+                visibleCategories.map((category) => {
+                  const isSelected = category.id === categoryDraftId;
+                  const color = category.color ?? (isIncome ? themeColors.income : themeColors.expense);
+                  const categoryIcon = resolveCategoryIconFromKey(category.icon) ?? resolveCategoryIcon(category.name);
+
+                  return (
+                    <Pressable
+                      key={category.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      style={[
+                        styles.selectCategoryRow,
+                        isSelected && { borderColor: color, backgroundColor: `${color}0A` },
+                      ]}
+                      onPress={() => setCategoryDraftId(category.id)}
+                    >
+                      <View style={[styles.selectCategoryBadge, { backgroundColor: categoryPillBackground(color) }]}>
+                        {categoryIcon ? (
+                          <Image source={categoryIcon} resizeMode="contain" style={styles.selectCategoryBadgeImage} />
+                        ) : (
+                          <Text style={[styles.selectCategoryBadgeText, { color }]}>{categoryShortLabel(category.name)}</Text>
+                        )}
+                      </View>
+
+                      <Text style={styles.selectCategoryName}>{category.name}</Text>
+
+                      <View style={[styles.selectCategoryRadioOuter, isSelected && { borderColor: color }]}>
+                        {isSelected ? (
+                          <View style={[styles.selectCategoryRadioInner, { backgroundColor: color }]}>
+                            <Text style={styles.selectCategoryCheckmark}>✓</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {!isCategorySearchFocused ? (
+              <>
+                <Pressable accessibilityRole="button" style={styles.selectCategoryManageLink}>
+                  <Text style={styles.selectCategoryManageLinkText}>Zarządzaj kategoriami</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.selectCategorySaveButton, categoryDraftId === null && styles.selectCategorySaveButtonDisabled]}
+                  onPress={saveCategorySelection}
+                  disabled={categoryDraftId === null}
+                >
+                  <Text style={styles.selectCategorySaveButtonText}>Zapisz wybór</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+
+          <StatusBar style="dark" />
+        </SafeAreaView>
+      </Modal>
 
       <StatusBar style="dark" />
     </SafeAreaView>
@@ -744,7 +1275,11 @@ export default function App() {
     return <OnboardingScreen onStartDashboard={() => setScreen('dashboard')} />;
   }
 
-  return <DashboardScreen onBackHome={() => setScreen('home')} />;
+  if (screen === 'add-transaction') {
+    return <AddTransactionScreen onBack={() => setScreen('dashboard')} onSave={() => setScreen('dashboard')} />;
+  }
+
+  return <DashboardScreen onBackHome={() => setScreen('home')} onOpenAddTransaction={() => setScreen('add-transaction')} />;
 }
 
 const styles = StyleSheet.create({
@@ -1547,6 +2082,675 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxScreen: {
+    flex: 1,
+    backgroundColor: '#f5f9ff',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) + 4 : 0,
+  },
+  addTxGlowTop: {
+    position: 'absolute',
+    top: -120,
+    left: -80,
+    width: 360,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+  },
+  addTxKeyboardAvoiding: {
+    flex: 1,
+  },
+  addTxScroll: {
+    flex: 1,
+  },
+  addTxScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 56,
+    gap: 14,
+  },
+  addTxBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxBackButtonImage: {
+    width: 72,
+    height: 72,
+  },
+  addTxTitle: {
+    marginTop: 6,
+    fontSize: 28,
+    lineHeight: 36,
+    color: '#151f43',
+    fontWeight: '700',
+    letterSpacing: -0.9,
+    fontFamily: fontFamilies.sans,
+  },
+  addTxTypeSegment: {
+    marginTop: 2,
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    borderRadius: radii.card,
+    backgroundColor: themeColors.surface,
+    padding: 4,
+  },
+  addTxTypeButton: {
+    width: '50%',
+    borderRadius: radii.panel,
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  addTxTypeButtonIncomeActive: {
+    backgroundColor: themeColors.incomeSoft,
+  },
+  addTxTypeButtonExpenseActive: {
+    backgroundColor: themeColors.expenseSoft,
+  },
+  addTxTypeIconImage: {
+    width: 54,
+    height: 54,
+  },
+  addTxTypeText: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#475569',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  addTxTypeTextIncome: {
+    color: themeColors.income,
+  },
+  addTxTypeTextExpense: {
+    color: themeColors.expense,
+  },
+  addTxCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  addTxCardDisabled: {
+    backgroundColor: themeColors.surfaceAlt,
+    borderColor: '#d9e2ef',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  addTxFieldLabel: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#6a7697',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  addTxFieldLabelDisabled: {
+    color: '#8b98b5',
+  },
+  addTxAmountValue: {
+    marginTop: 2,
+    fontSize: 32,
+    lineHeight: 40,
+    color: '#101e46',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+    letterSpacing: -0.9,
+  },
+  addTxAmountInputRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  addTxAmountInput: {
+    flex: 1,
+    fontSize: 32,
+    lineHeight: 40,
+    color: '#101e46',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+    letterSpacing: -0.9,
+    paddingVertical: 0,
+  },
+  addTxAmountCurrency: {
+    marginLeft: 6,
+    marginBottom: 2,
+    fontSize: 32,
+    lineHeight: 40,
+    color: '#101e46',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+    letterSpacing: -0.6,
+  },
+  addTxErrorText: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#b85a55',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxInlineValueRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  addTxInlineIcon: {
+    fontSize: 22,
+    lineHeight: 26,
+    color: '#7d86a6',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxInlineImageIcon: {
+    width: 32,
+    height: 32,
+  },
+  addTxInlineValueRowReadOnly: {
+    marginTop: 8,
+  },
+  addTxInlineValue: {
+    flexShrink: 1,
+    fontSize: 20,
+    lineHeight: 28,
+    color: '#1e2a52',
+    fontWeight: '500',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.5,
+  },
+  addTxInlineValueDisabled: {
+    color: '#7f8dab',
+  },
+  addTxCategoryRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addTxCategoryBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: themeColors.incomeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxCategoryBadgeIcon: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: themeColors.income,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  addTxCategoryBadgeImage: {
+    width: '120%',
+    height: '120%',
+  },
+  addTxCategoryText: {
+    marginLeft: 12,
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#1c2b53',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.5,
+  },
+  addTxCategoryChevron: {
+    fontSize: 30,
+    lineHeight: 34,
+    color: '#6f7da2',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxDescriptionBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    borderRadius: radii.panel,
+    minHeight: 132,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  addTxDescriptionInput: {
+    flex: 1,
+    color: '#1b2445',
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: fontFamilies.sans,
+  },
+  addTxCounterText: {
+    alignSelf: 'flex-end',
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#7b88a9',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxInfoCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: '#c8ecd6',
+    backgroundColor: '#ecf9f1',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  addTxInfoIcon: {
+    marginTop: 1,
+    marginRight: 10,
+    fontSize: 22,
+    lineHeight: 26,
+    color: themeColors.income,
+    fontFamily: fontFamilies.sans,
+  },
+  addTxInfoContent: {
+    flex: 1,
+  },
+  addTxInfoTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    color: '#165f37',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  addTxInfoText: {
+    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#2f5f48',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxSaveButton: {
+    marginTop: 6,
+    borderRadius: radii.pill,
+    minHeight: 74,
+    backgroundColor: themeColors.income,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  addTxSaveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.4,
+  },
+  calendarModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  calendarModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  },
+  calendarModalCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surface,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  calendarModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  calendarModalHeaderTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    color: themeColors.textPrimary,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  calendarNavButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.surfaceAlt,
+  },
+  calendarNavButtonText: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+  },
+  calendarWeekdaysRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+  },
+  calendarWeekdayLabel: {
+    width: '14.2857%',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 16,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarDayCell: {
+    width: '14.2857%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+  calendarDayCellOutOfMonth: {
+    opacity: 0.45,
+  },
+  calendarDayCellSelected: {
+    backgroundColor: themeColors.info,
+  },
+  calendarDayCellText: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  calendarDayCellTextOutOfMonth: {
+    color: themeColors.textMuted,
+  },
+  calendarDayCellTextSelected: {
+    color: '#ffffff',
+  },
+  calendarCloseButton: {
+    marginTop: 8,
+    alignSelf: 'center',
+    borderRadius: radii.pill,
+    backgroundColor: themeColors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  calendarCloseButtonText: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  selectCategoryScreen: {
+    flex: 1,
+    backgroundColor: '#f6f9ff',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) + 4 : 0,
+  },
+  selectCategoryGlowTop: {
+    position: 'absolute',
+    top: -120,
+    left: -60,
+    width: 320,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  selectCategoryContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 20,
+  },
+  selectCategoryBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectCategoryTitle: {
+    marginTop: 2,
+    fontSize: 28,
+    lineHeight: 36,
+    letterSpacing: -0.9,
+    color: '#12244d',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryTypePillWrap: {
+    marginTop: 12,
+    flexDirection: 'row',
+  },
+  selectCategoryTypePill: {
+    minHeight: 46,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  selectCategoryTypePillIncome: {
+    borderColor: '#b6eacc',
+    backgroundColor: '#ecf9f2',
+  },
+  selectCategoryTypePillExpense: {
+    borderColor: '#ffd2d2',
+    backgroundColor: '#fff3f3',
+  },
+  selectCategoryTypePillArrow: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  selectCategoryTypePillArrowIncome: {
+    color: '#16A34A',
+  },
+  selectCategoryTypePillArrowExpense: {
+    color: '#DC2626',
+    transform: [{ rotate: '90deg' }],
+  },
+  selectCategoryTypePillText: {
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  selectCategoryTypePillTextIncome: {
+    color: '#16A34A',
+  },
+  selectCategoryTypePillTextExpense: {
+    color: '#DC2626',
+  },
+  selectCategoryHint: {
+    marginTop: 12,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#69799f',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategorySearchBox: {
+    marginTop: 12,
+    minHeight: 56,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#e2e8f5',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectCategorySearchIcon: {
+    width: 18,
+    height: 18,
+  },
+  selectCategorySearchInput: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#162754',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.2,
+    paddingVertical: 0,
+  },
+  selectCategoryList: {
+    marginTop: 14,
+    flex: 1,
+  },
+  selectCategoryListContent: {
+    gap: 12,
+    paddingBottom: 12,
+  },
+  selectCategoryRow: {
+    minHeight: 96,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#e6ebf6',
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  selectCategoryBadge: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectCategoryBadgeImage: {
+    width: '120%',
+    height: '120%',
+  },
+  selectCategoryBadgeText: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryName: {
+    marginLeft: 12,
+    marginRight: 10,
+    flex: 1,
+    fontSize: 20,
+    lineHeight: 26,
+    color: '#151f43',
+    fontWeight: '600',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryRadioOuter: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: '#a8b4d2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  selectCategoryRadioInner: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectCategoryCheckmark: {
+    color: '#ffffff',
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryEmptyCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f5',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 4,
+  },
+  selectCategoryEmptyTitle: {
+    fontSize: 19,
+    lineHeight: 24,
+    color: '#15224a',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryEmptyText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#6a799d',
+    fontFamily: fontFamilies.sans,
+  },
+  selectCategoryManageLink: {
+    alignSelf: 'center',
+    marginTop: 6,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  selectCategoryManageLinkText: {
+    color: '#687aa5',
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: fontFamilies.sans,
+    fontWeight: '500',
+  },
+  selectCategorySaveButton: {
+    minHeight: 72,
+    borderRadius: radii.pill,
+    backgroundColor: themeColors.income,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  selectCategorySaveButtonDisabled: {
+    backgroundColor: '#9ecbad',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  selectCategorySaveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     fontWeight: '700',
     fontFamily: fontFamilies.sans,
   },
