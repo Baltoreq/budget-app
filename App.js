@@ -155,7 +155,8 @@ function normalizeSearchValue(value) {
     .trim()
     .toLocaleLowerCase('pl-PL')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
 }
 
 function buildDonutSegments(entries, totalAmountMinor) {
