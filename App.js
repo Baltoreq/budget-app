@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Directory, File } from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { budgetStore } from './store';
 import { fontFamilies, radii, themeColors } from './theme';
@@ -27,6 +30,101 @@ const walletIcon = require('./assets/wallet.png');
 const transferIcon = require('./assets/transfer.png');
 const shoppingBagIcon = require('./assets/shopping-bag.png');
 const moneyBagIcon = require('./assets/money-bag.png');
+
+const ONBOARDING_STORAGE_KEY = '@homebudget/onboarding-shown';
+const ONBOARDING_FILE_NAME = 'homebudget-onboarding-state.json';
+
+async function readOnboardingState() {
+  if (Platform.OS === 'web') {
+    try {
+      return await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Unable to read onboarding state from AsyncStorage', error);
+      return null;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${ONBOARDING_FILE_NAME}`,
+      name: ONBOARDING_FILE_NAME,
+      size: 0,
+    });
+
+    const exists = await file.exists;
+    if (!exists) {
+      return null;
+    }
+
+    const savedValue = await file.text();
+    return savedValue === 'true' ? 'true' : null;
+  } catch (error) {
+    try {
+      return await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
+    } catch (storageError) {
+      console.warn('Unable to read onboarding state', storageError);
+      return null;
+    }
+  }
+}
+
+async function writeOnboardingState(isShown) {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, isShown ? 'true' : 'false');
+      return;
+    } catch (error) {
+      console.warn('Unable to persist onboarding state via AsyncStorage', error);
+      return;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${ONBOARDING_FILE_NAME}`,
+      name: ONBOARDING_FILE_NAME,
+      size: 0,
+    });
+
+    await file.write(isShown ? 'true' : 'false', { encoding: 'utf8' });
+  } catch (error) {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, isShown ? 'true' : 'false');
+    } catch (storageError) {
+      console.warn('Unable to persist onboarding state', storageError);
+    }
+  }
+}
+
+async function clearOnboardingState() {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Unable to clear onboarding state from AsyncStorage', error);
+    }
+
+    return;
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${ONBOARDING_FILE_NAME}`,
+      name: ONBOARDING_FILE_NAME,
+      size: 0,
+    });
+
+    await file.delete();
+  } catch (error) {
+    console.warn('Unable to clear onboarding state file', error);
+  }
+
+  try {
+    await AsyncStorage.removeItem(ONBOARDING_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear onboarding state from AsyncStorage', error);
+  }
+}
 
 const monthFormatter = new Intl.DateTimeFormat('pl-PL', {
   month: 'long',
@@ -63,6 +161,12 @@ const operationMonthDisplayFormatter = new Intl.DateTimeFormat('pl-PL', {
 });
 
 const calendarWeekdayLabels = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
+const mainTabs = [
+  { key: 'dashboard', label: 'Dashboard', icon: '⌂' },
+  { key: 'operations', label: 'Operacje', icon: '☰' },
+  { key: 'analytics', label: 'Analizy', icon: '◔' },
+  { key: 'more', label: 'Więcej', icon: '◼' },
+];
 
 function formatMinorCurrency(amountMinor) {
   return currencyFormatter.format(amountMinor / 100);
@@ -380,7 +484,7 @@ function buildCalendarMonthCells(viewMonthDate) {
   return cells;
 }
 
-function HomeScreen({ onOpenOnboarding }) {
+function HomeScreen({ onOpenOnboarding, onClearStorage }) {
   return (
     <SafeAreaView style={styles.homeScreen}>
       <View style={styles.homeGlowTop} />
@@ -401,7 +505,8 @@ function HomeScreen({ onOpenOnboarding }) {
         <View style={styles.homeCard}>
           <Text style={styles.homeCardTitle}>Wejdź do onboarding&apos;u</Text>
           <Text style={styles.homeCardText}>Otwórz ekran powitalny, aby zobaczyć układ przygotowany dokładnie pod załączony projekt.</Text>
-          <AppLink label="Otwórz onboarding" onPress={onOpenOnboarding} />
+          <AppLink label="Otwórz aplikację" onPress={onOpenOnboarding} />
+          <AppLink label="Wyczyść AsyncStorage" onPress={onClearStorage} />
         </View>
       </View>
 
@@ -591,7 +696,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 14,
-          paddingBottom: 24,
+          paddingBottom: 28,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -787,13 +892,6 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
             <Text style={styles.dashboardAddButtonText}>Dodaj operację</Text>
           </View>
         </Pressable>
-
-        <View style={styles.dashboardBottomNav}>
-          <DashboardTabItem label="Dashboard" icon="⌂" active />
-          <DashboardTabItem label="Operacje" icon="☰" />
-          <DashboardTabItem label="Analizy" icon="◔" />
-          <DashboardTabItem label="Więcej" icon="◼" />
-        </View>
 
         <Pressable accessibilityRole="button" onPress={onBackHome} style={styles.dashboardBackButtonSecondary}>
           <Text style={styles.dashboardBackButtonText}>Powrót do ekranu startowego</Text>
@@ -1195,11 +1293,111 @@ function AddTransactionScreen({ onBack, onSave }) {
   );
 }
 
-function DashboardTabItem({ label, icon, active = false }) {
+function PlaceholderTabScreen({ title }) {
   return (
-    <View style={styles.dashboardTabItem}>
-      <Text style={[styles.dashboardTabIcon, { color: active ? '#16A34A' : '#94A3B8' }]}>{icon}</Text>
-      <Text style={[styles.dashboardTabLabel, { color: active ? '#16A34A' : '#94A3B8' }]}>{label}</Text>
+    <SafeAreaView style={styles.placeholderScreen}>
+      <View style={styles.placeholderCard}>
+        <Text style={styles.placeholderTitle}>{title}</Text>
+        <Text style={styles.placeholderSubtitle}>Ta sekcja jest przygotowana jako placeholder i zostanie uzupełniona w kolejnym kroku.</Text>
+      </View>
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
+function BottomTabBar({ activeTab, onChangeTab }) {
+  const [barWidth, setBarWidth] = useState(0);
+  const activeX = useRef(new Animated.Value(0)).current;
+  const circleSize = 54;
+  const tabsBarInnerHorizontalPadding = 8;
+  const contentWidth = barWidth > 0 ? barWidth - (tabsBarInnerHorizontalPadding * 2) : 0;
+  const tabSlotWidth = contentWidth > 0 ? contentWidth / mainTabs.length : 0;
+  const activeTabIndex = Math.max(0, mainTabs.findIndex((item) => item.key === activeTab));
+
+  useEffect(() => {
+    if (tabSlotWidth <= 0) {
+      return;
+    }
+
+    const nextX = tabsBarInnerHorizontalPadding + (activeTabIndex * tabSlotWidth) + ((tabSlotWidth - circleSize) / 2);
+
+    Animated.spring(activeX, {
+      toValue: nextX,
+      useNativeDriver: true,
+      damping: 16,
+      stiffness: 180,
+      mass: 0.9,
+    }).start();
+  }, [activeTabIndex, activeX, tabSlotWidth]);
+
+  const activeTabConfig = mainTabs[activeTabIndex] ?? mainTabs[0];
+
+  return (
+    <View style={styles.tabsBarOuter}>
+      <View
+        style={styles.tabsBarInner}
+        onLayout={(event) => {
+          setBarWidth(event.nativeEvent.layout.width);
+        }}
+      >
+        {tabSlotWidth > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.tabsActiveCircle,
+              {
+                width: circleSize,
+                height: circleSize,
+                transform: [{ translateX: activeX }],
+              },
+            ]}
+          >
+            <Text style={styles.tabsActiveCircleIcon}>{activeTabConfig.icon}</Text>
+          </Animated.View>
+        ) : null}
+
+        {mainTabs.map((tab) => {
+          const isActive = tab.key === activeTab;
+
+          return (
+            <Pressable
+              key={tab.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
+              style={styles.tabsButton}
+              onPress={() => onChangeTab(tab.key)}
+            >
+              {isActive ? <View style={styles.tabsActiveSpacer} /> : <Text style={styles.tabsIcon}>{tab.icon}</Text>}
+              {isActive ? null : <Text style={styles.tabsLabel}>{tab.label}</Text>}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction }) {
+  const activeScreen = (() => {
+    if (activeTab === 'operations') {
+      return <PlaceholderTabScreen title="Operacje" />;
+    }
+
+    if (activeTab === 'analytics') {
+      return <PlaceholderTabScreen title="Analizy" />;
+    }
+
+    if (activeTab === 'more') {
+      return <PlaceholderTabScreen title="Więcej" />;
+    }
+
+    return <DashboardScreen onBackHome={onBackHome} onOpenAddTransaction={onOpenAddTransaction} />;
+  })();
+
+  return (
+    <View style={styles.tabsLayout}>
+      <View style={styles.tabsContent}>{activeScreen}</View>
+      <BottomTabBar activeTab={activeTab} onChangeTab={onChangeTab} />
     </View>
   );
 }
@@ -1265,22 +1463,99 @@ function OnboardingScreen({ onStartDashboard }) {
   );
 }
 
-export default function App() {
+function AppContent() {
   const [screen, setScreen] = useState('home');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
+  const [hasLoadedOnboardingState, setHasLoadedOnboardingState] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    readOnboardingState()
+      .then((storedValue) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (storedValue === 'true') {
+          setHasSeenOnboarding(true);
+          setScreen('main');
+          setHasLoadedOnboardingState(true);
+          return;
+        }
+
+        setHasSeenOnboarding(false);
+        setHasLoadedOnboardingState(true);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setHasSeenOnboarding(false);
+          setScreen('home');
+          setHasLoadedOnboardingState(true);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleStartDashboard = async () => {
+    await writeOnboardingState(true);
+    setHasSeenOnboarding(true);
+    setActiveTab('dashboard');
+    setScreen('main');
+  };
+
+  const handleClearStorage = async () => {
+    await clearOnboardingState();
+    setHasSeenOnboarding(false);
+    setScreen('home');
+  };
+
+  const handleOpenApp = () => {
+    if (hasSeenOnboarding) {
+      setActiveTab('dashboard');
+      setScreen('main');
+      return;
+    }
+
+    setScreen('onboarding');
+  };
+
+  if (!hasLoadedOnboardingState && (screen === 'home' || screen === 'main')) {
+    return null;
+  }
 
   if (screen === 'home') {
-    return <HomeScreen onOpenOnboarding={() => setScreen('onboarding')} />;
+    return <HomeScreen onOpenOnboarding={handleOpenApp} onClearStorage={handleClearStorage} />;
   }
 
   if (screen === 'onboarding') {
-    return <OnboardingScreen onStartDashboard={() => setScreen('dashboard')} />;
+    return <OnboardingScreen onStartDashboard={handleStartDashboard} />;
   }
 
   if (screen === 'add-transaction') {
-    return <AddTransactionScreen onBack={() => setScreen('dashboard')} onSave={() => setScreen('dashboard')} />;
+    return <AddTransactionScreen onBack={() => setScreen('main')} onSave={() => setScreen('main')} />;
   }
 
-  return <DashboardScreen onBackHome={() => setScreen('home')} onOpenAddTransaction={() => setScreen('add-transaction')} />;
+  return (
+    <MainTabsScreen
+      activeTab={activeTab}
+      onChangeTab={setActiveTab}
+      onBackHome={() => setScreen('home')}
+      onOpenAddTransaction={() => setScreen('add-transaction')}
+    />
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1877,30 +2152,102 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: fontFamilies.sans,
   },
-  dashboardBottomNav: {
-    marginTop: 24,
+  tabsLayout: {
+    flex: 1,
+    backgroundColor: '#f4f8ff',
+  },
+  tabsContent: {
+    flex: 1,
+  },
+  tabsBarOuter: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 16 : 12,
+    backgroundColor: '#f4f8ff',
+  },
+  tabsBarInner: {
+    height: 84,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(204,218,240,0.9)',
+    backgroundColor: '#ffffff',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    backgroundColor: themeColors.surface,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 8,
+    overflow: 'hidden',
   },
-  dashboardTabItem: {
+  tabsButton: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 64,
+    gap: 4,
   },
-  dashboardTabIcon: {
+  tabsIcon: {
     fontSize: 20,
     lineHeight: 22,
+    color: '#6e809f',
     fontFamily: fontFamilies.sans,
   },
-  dashboardTabLabel: {
-    marginTop: 2,
-    fontSize: 14,
-    lineHeight: 18,
+  tabsLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: '#6e809f',
+    fontFamily: fontFamilies.sans,
+  },
+  tabsActiveCircle: {
+    position: 'absolute',
+    top: 15,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0f2a6a',
+    shadowOffset: { width: 0, height: 9 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  tabsActiveCircleIcon: {
+    color: '#ffffff',
+    fontSize: 21,
+    lineHeight: 24,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  tabsActiveSpacer: {
+    height: 50,
+    width: 50,
+  },
+  placeholderScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f4f8ff',
+    paddingHorizontal: 20,
+  },
+  placeholderCard: {
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    gap: 8,
+  },
+  placeholderTitle: {
+    color: '#1b2445',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  placeholderSubtitle: {
+    color: themeColors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
     fontFamily: fontFamilies.sans,
   },
   dashboardBackButton: {
