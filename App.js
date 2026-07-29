@@ -1309,7 +1309,9 @@ function BottomTabBar({ activeTab, onChangeTab }) {
   const [barWidth, setBarWidth] = useState(0);
   const activeX = useRef(new Animated.Value(0)).current;
   const circleSize = 54;
-  const tabSlotWidth = barWidth > 0 ? barWidth / mainTabs.length : 0;
+  const tabsBarInnerHorizontalPadding = 8;
+  const contentWidth = barWidth > 0 ? barWidth - (tabsBarInnerHorizontalPadding * 2) : 0;
+  const tabSlotWidth = contentWidth > 0 ? contentWidth / mainTabs.length : 0;
   const activeTabIndex = Math.max(0, mainTabs.findIndex((item) => item.key === activeTab));
 
   useEffect(() => {
@@ -1317,7 +1319,7 @@ function BottomTabBar({ activeTab, onChangeTab }) {
       return;
     }
 
-    const nextX = (activeTabIndex * tabSlotWidth) + ((tabSlotWidth - circleSize) / 2);
+    const nextX = tabsBarInnerHorizontalPadding + (activeTabIndex * tabSlotWidth) + ((tabSlotWidth - circleSize) / 2);
 
     Animated.spring(activeX, {
       toValue: nextX,
@@ -1465,6 +1467,7 @@ function AppContent() {
   const [screen, setScreen] = useState('home');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
+  const [hasLoadedOnboardingState, setHasLoadedOnboardingState] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -1478,15 +1481,18 @@ function AppContent() {
         if (storedValue === 'true') {
           setHasSeenOnboarding(true);
           setScreen('main');
+          setHasLoadedOnboardingState(true);
           return;
         }
 
         setHasSeenOnboarding(false);
+        setHasLoadedOnboardingState(true);
       })
       .catch(() => {
         if (isMounted) {
           setHasSeenOnboarding(false);
           setScreen('home');
+          setHasLoadedOnboardingState(true);
         }
       });
 
@@ -1517,6 +1523,10 @@ function AppContent() {
 
     setScreen('onboarding');
   };
+
+  if (!hasLoadedOnboardingState && (screen === 'home' || screen === 'main')) {
+    return null;
+  }
 
   if (screen === 'home') {
     return <HomeScreen onOpenOnboarding={handleOpenApp} onClearStorage={handleClearStorage} />;
