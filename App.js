@@ -20,6 +20,7 @@ const openingBalanceMetricIcon = require('./assets/opening balance.png');
 const incomeMetricIcon = require('./assets/income.png');
 const outcomeMetricIcon = require('./assets/outcome.png');
 const balanceMetricIcon = require('./assets/balance.png');
+const checkListIcon = require('./assets/check-list.png');
 const groceriesCategoryIcon = require('./assets/groceries.png');
 const transportCategoryIcon = require('./assets/transport.png');
 const rentCategoryIcon = require('./assets/rent.png');
@@ -412,6 +413,377 @@ function formatOperationDateWithWeekday(date) {
 function formatOperationMonthFromDate(date) {
   const formatted = operationMonthDisplayFormatter.format(date);
   return `${formatted.charAt(0).toUpperCase()}${formatted.slice(1)}`;
+}
+
+function formatOperationCount(count) {
+  return count === 1 ? '1 operacja' : `${count} operacji`;
+}
+
+const operationTypeFilterOptions = [
+  { value: 'all', label: 'Wszystkie' },
+  { value: 'income', label: 'Wpływy' },
+  { value: 'expense', label: 'Wydatki' },
+];
+
+const operationSortOptions = [
+  { value: 'newest', label: 'Najnowsze najpierw' },
+  { value: 'oldest', label: 'Najstarsze najpierw' },
+  { value: 'amountAsc', label: 'Kwota rosnąco' },
+  { value: 'amountDesc', label: 'Kwota malejąco' },
+];
+
+function resolveOperationRowIcon(transaction, category) {
+  if (transaction.type === 'income') {
+    return incomeMetricIcon;
+  }
+
+  return resolveCategoryIconFromKey(category?.icon) ?? resolveCategoryIcon(category?.name ?? '') ?? outcomeMetricIcon;
+}
+
+function OperationsMetric({ label, value, valueColor }) {
+  return (
+    <View style={styles.operationsMetricItem}>
+      <Text style={styles.operationsMetricLabel}>{label}</Text>
+      <Text style={[styles.operationsMetricValue, { color: valueColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function OperationTypeChip({ label, active, onPress }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[styles.operationsTypeChip, active && styles.operationsTypeChipActive]} onPress={onPress}>
+      <Text style={[styles.operationsTypeChipText, active && styles.operationsTypeChipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function OperationChoiceRow({ label, active, onPress }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[styles.operationsChoiceRow, active && styles.operationsChoiceRowActive]} onPress={onPress}>
+      <Text style={[styles.operationsChoiceRowText, active && styles.operationsChoiceRowTextActive]}>{label}</Text>
+      {active ? <Text style={styles.operationsChoiceRowCheck}>✓</Text> : null}
+    </Pressable>
+  );
+}
+
+function OperationsScreen({ onOpenAddTransaction }) {
+  const operationsData = useMemo(() => {
+    const budgets = budgetStore.getMonthlyBudgets();
+    const transactions = budgetStore.getTransactions();
+    const categoriesById = new Map(budgetStore.getCategories().map((category) => [category.id, category]));
+    const budgetsByMonth = new Map(budgets.map((budget) => [budget.month, budget]));
+    const availableMonths = budgets.map((budget) => budget.month);
+
+    return {
+      budgetsByMonth,
+      categoriesById,
+      availableMonths,
+      latestMonth: availableMonths[availableMonths.length - 1] ?? null,
+      transactionCountByMonth: transactions.reduce((accumulator, transaction) => {
+        accumulator[transaction.assignedMonth] = (accumulator[transaction.assignedMonth] ?? 0) + 1;
+        return accumulator;
+      }, {}),
+    };
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState(() => operationsData.latestMonth);
+  const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [searchInput, setSearchInput] = useState('');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!operationsData.latestMonth) {
+      setSelectedMonth(null);
+      return;
+    }
+
+    if (!selectedMonth || !operationsData.availableMonths.includes(selectedMonth)) {
+      setSelectedMonth(operationsData.latestMonth);
+    }
+  }, [operationsData.availableMonths, operationsData.latestMonth, selectedMonth]);
+
+  const selectedBudget = selectedMonth ? operationsData.budgetsByMonth.get(selectedMonth) ?? null : null;
+  const monthTransactions = useMemo(() => {
+    if (!selectedMonth) {
+      return [];
+    }
+
+    const selectedType = typeFilter === 'all' ? undefined : typeFilter;
+    const normalizedQuery = normalizeSearchValue(searchInput);
+    const baseTransactions = budgetStore.getTransactions({ month: selectedMonth, type: selectedType }, sortOrder);
+
+    return baseTransactions
+      .filter((transaction) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const category = operationsData.categoriesById.get(transaction.categoryId);
+        const haystack = [
+          transaction.description,
+          category?.name,
+          transaction.type === 'income' ? 'Wpływ' : 'Wydatek',
+          formatOperationDate(transaction.operationDate),
+          formatMonthLabel(transaction.assignedMonth),
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return normalizeSearchValue(haystack).includes(normalizedQuery);
+      })
+      .map((transaction) => ({
+        transaction,
+        category: operationsData.categoriesById.get(transaction.categoryId) ?? null,
+      }));
+  }, [operationsData.categoriesById, searchInput, selectedMonth, sortOrder, typeFilter]);
+
+  const monthTransactionCount = selectedMonth ? (operationsData.transactionCountByMonth[selectedMonth] ?? 0) : 0;
+
+  if (!operationsData.latestMonth || !selectedBudget || !selectedMonth) {
+    return (
+      <SafeAreaView style={styles.operationsEmptyScreen}>
+        <View style={styles.operationsEmptyGlowTop} />
+        <View style={styles.operationsEmptyCard}>
+          <Text style={styles.operationsEmptyTitle}>Brak operacji</Text>
+          <Text style={styles.operationsEmptyText}>Dodaj pierwszą operację, aby zobaczyć miesięczne podsumowanie i listę zapisów.</Text>
+          <Pressable accessibilityRole="button" style={styles.operationsAddButton} onPress={onOpenAddTransaction}>
+            <View style={styles.operationsAddButtonRow}>
+              <Image source={addIcon} resizeMode="contain" style={styles.operationsAddIcon} />
+              <Text style={styles.operationsAddButtonText}>Dodaj operację</Text>
+            </View>
+          </Pressable>
+        </View>
+        <StatusBar style="dark" />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.operationsScreen}>
+      <View style={styles.operationsGlowLeft} />
+      <View style={styles.operationsGlowRight} />
+
+      <ScrollView
+        style={styles.operationsScroll}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 68,
+          paddingBottom: 28,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.operationsTopRow}>
+          <View style={styles.operationsMonthSelectorWrap}>
+            <Pressable accessibilityRole="button" style={styles.operationsMonthSelectorButton} onPress={() => setIsMonthDropdownOpen((open) => !open)}>
+              <Text style={styles.operationsMonthText}>{formatMonthLabel(selectedMonth)}</Text>
+              <Text style={styles.operationsMonthChevron}>{isMonthDropdownOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+
+            {isMonthDropdownOpen ? (
+              <View style={styles.operationsMonthDropdown}>
+                {operationsData.availableMonths.map((month) => {
+                  const isActive = month === selectedMonth;
+
+                  return (
+                    <Pressable
+                      key={month}
+                      accessibilityRole="button"
+                      style={[styles.operationsMonthOption, isActive && styles.operationsMonthOptionActive]}
+                      onPress={() => {
+                        setSelectedMonth(month);
+                        setIsMonthDropdownOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.operationsMonthOptionText, isActive && styles.operationsMonthOptionTextActive]}>{formatMonthLabel(month)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.operationsActionGroup}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Filtruj operacje" hitSlop={8} style={styles.operationsActionButton} onPress={() => setIsFilterModalOpen(true)}>
+              <Text style={styles.operationsActionIcon}>≡</Text>
+              <Text style={styles.operationsActionLabel}>Filtruj</Text>
+            </Pressable>
+
+            <Pressable accessibilityRole="button" accessibilityLabel="Sortuj operacje" hitSlop={8} style={styles.operationsActionButton} onPress={() => setIsSortModalOpen(true)}>
+              <Text style={styles.operationsActionIcon}>↕</Text>
+              <Text style={styles.operationsActionLabel}>Sortuj</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Text style={styles.operationsTitle}>Operacje</Text>
+
+        <View style={styles.operationsSearchBox}>
+          <Image source={searchIcon} resizeMode="contain" style={styles.operationsSearchIcon} />
+          <TextInput
+            style={styles.operationsSearchInput}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            placeholder="Szukaj operacji"
+            placeholderTextColor="#8c99b6"
+            accessibilityLabel="Szukaj operacji"
+          />
+        </View>
+
+        <View style={styles.operationsTypeRow}>
+          {operationTypeFilterOptions.map((option) => (
+            <OperationTypeChip
+              key={option.value}
+              label={option.label}
+              active={typeFilter === option.value}
+              onPress={() => setTypeFilter(option.value)}
+            />
+          ))}
+        </View>
+
+        <View style={styles.operationsSummaryCard}>
+          <View style={styles.operationsSummaryHeader}>
+            <View style={styles.operationsSummaryMonthBlock}>
+              <View style={styles.operationsSummaryIconWrap}>
+                <Image source={checkListIcon} resizeMode="contain" style={styles.operationsSummaryIcon} />
+              </View>
+              <View style={styles.operationsSummaryMonthTextWrap}>
+                <Text style={styles.operationsSummaryCount}>{formatOperationCount(monthTransactionCount)}</Text>
+                <Text style={styles.operationsSummaryMonth}>{formatMonthLabel(selectedMonth)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.operationsSummaryMetricsRow}>
+              <OperationsMetric label="Wpływy" value={formatMinorCurrency(selectedBudget.totalIncomeMinor)} valueColor={themeColors.income} />
+              <View style={styles.operationsSummaryMetricDivider} />
+              <OperationsMetric label="Wydatki" value={formatMinorCurrency(selectedBudget.totalExpenseMinor)} valueColor={themeColors.expense} />
+              <View style={styles.operationsSummaryMetricDivider} />
+              <OperationsMetric
+                label="Saldo"
+                value={formatSignedMinorCurrency(selectedBudget.monthlyResultMinor)}
+                valueColor={selectedBudget.monthlyResultMinor >= 0 ? themeColors.income : themeColors.expense}
+              />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.operationsListCard}>
+          {monthTransactions.length === 0 ? (
+            <View style={styles.operationsEmptyListState}>
+              <Text style={styles.operationsEmptyListTitle}>Brak wyników</Text>
+              <Text style={styles.operationsEmptyListText}>Zmień miesiąc, filtr lub wyszukiwaną frazę, aby zobaczyć operacje.</Text>
+            </View>
+          ) : (
+            monthTransactions.map(({ transaction, category }) => {
+              const isIncome = transaction.type === 'income';
+              const rowIcon = resolveOperationRowIcon(transaction, category);
+              const rowColor = category?.color ?? (isIncome ? themeColors.income : themeColors.expense);
+
+              return (
+                <View key={transaction.id} style={styles.operationsRow}>
+                  <View style={styles.operationsRowLeft}>
+                    <View style={[styles.operationsRowIconWrap, { backgroundColor: isIncome ? themeColors.incomeSoft : categoryPillBackground(rowColor) }]}>
+                      <Image source={rowIcon} resizeMode="contain" style={styles.operationsRowIcon} />
+                    </View>
+
+                    <View style={styles.operationsRowTextWrap}>
+                      <Text style={styles.operationsRowTitle} numberOfLines={1}>
+                        {transaction.description || category?.name || 'Operacja'}
+                      </Text>
+                      <Text style={styles.operationsRowSubtitle} numberOfLines={1}>
+                        {isIncome ? 'Wpływ' : 'Wydatek'} • {formatOperationDate(transaction.operationDate)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.operationsRowAmount, { color: isIncome ? themeColors.income : themeColors.expense }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                    {formatSignedMinorCurrency(isIncome ? transaction.amountMinor : -transaction.amountMinor)}
+                  </Text>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <Pressable accessibilityRole="button" accessibilityLabel="Dodaj operację" style={styles.operationsAddButton} onPress={onOpenAddTransaction}>
+          <View style={styles.operationsAddButtonRow}>
+            <Image source={addIcon} resizeMode="contain" style={styles.operationsAddIcon} />
+            <Text style={styles.operationsAddButtonText}>Dodaj operację</Text>
+          </View>
+        </Pressable>
+      </ScrollView>
+
+      <Modal visible={isFilterModalOpen} transparent animationType="fade" onRequestClose={() => setIsFilterModalOpen(false)}>
+        <View style={styles.operationsModalOverlay}>
+          <Pressable style={styles.operationsModalBackdrop} onPress={() => setIsFilterModalOpen(false)} />
+
+          <View style={styles.operationsModalCard}>
+            <Text style={styles.operationsModalTitle}>Filtruj operacje</Text>
+            <Text style={styles.operationsModalSubtitle}>Wybierz typ operacji, który chcesz zobaczyć.</Text>
+
+            <View style={styles.operationsModalChoices}>
+              {operationTypeFilterOptions.map((option) => (
+                <OperationChoiceRow
+                  key={option.value}
+                  label={option.label}
+                  active={typeFilter === option.value}
+                  onPress={() => setTypeFilter(option.value)}
+                />
+              ))}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              style={styles.operationsModalResetButton}
+              onPress={() => {
+                setTypeFilter('all');
+                setSearchInput('');
+              }}
+            >
+              <Text style={styles.operationsModalResetButtonText}>Wyczyść filtry</Text>
+            </Pressable>
+
+            <Pressable accessibilityRole="button" style={styles.operationsModalCloseButton} onPress={() => setIsFilterModalOpen(false)}>
+              <Text style={styles.operationsModalCloseButtonText}>Zamknij</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isSortModalOpen} transparent animationType="fade" onRequestClose={() => setIsSortModalOpen(false)}>
+        <View style={styles.operationsModalOverlay}>
+          <Pressable style={styles.operationsModalBackdrop} onPress={() => setIsSortModalOpen(false)} />
+
+          <View style={styles.operationsModalCard}>
+            <Text style={styles.operationsModalTitle}>Sortuj operacje</Text>
+            <Text style={styles.operationsModalSubtitle}>Zmień kolejność wyświetlania listy.</Text>
+
+            <View style={styles.operationsModalChoices}>
+              {operationSortOptions.map((option) => (
+                <OperationChoiceRow
+                  key={option.value}
+                  label={option.label}
+                  active={sortOrder === option.value}
+                  onPress={() => setSortOrder(option.value)}
+                />
+              ))}
+            </View>
+
+            <Pressable accessibilityRole="button" style={styles.operationsModalCloseButton} onPress={() => setIsSortModalOpen(false)}>
+              <Text style={styles.operationsModalCloseButtonText}>Zamknij</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
 }
 
 function normalizeAmountInput(rawValue) {
@@ -1380,7 +1752,7 @@ function BottomTabBar({ activeTab, onChangeTab }) {
 function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction }) {
   const activeScreen = (() => {
     if (activeTab === 'operations') {
-      return <PlaceholderTabScreen title="Operacje" />;
+      return <OperationsScreen onOpenAddTransaction={onOpenAddTransaction} />;
     }
 
     if (activeTab === 'analytics') {
@@ -2219,6 +2591,523 @@ const styles = StyleSheet.create({
   tabsActiveSpacer: {
     height: 50,
     width: 50,
+  },
+  operationsScreen: {
+    flex: 1,
+    backgroundColor: '#f4f8ff',
+  },
+  operationsGlowLeft: {
+    position: 'absolute',
+    left: -88,
+    top: -104,
+    width: 284,
+    height: 284,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+  },
+  operationsGlowRight: {
+    position: 'absolute',
+    right: -96,
+    top: 108,
+    width: 248,
+    height: 248,
+    borderRadius: 999,
+    backgroundColor: 'rgba(219,232,255,0.72)',
+  },
+  operationsScroll: {
+    flex: 1,
+  },
+  operationsTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  operationsMonthSelectorWrap: {
+    position: 'relative',
+    flex: 1,
+    paddingRight: 10,
+  },
+  operationsMonthSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+  },
+  operationsMonthText: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: '#1c284f',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsMonthChevron: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#475569',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  operationsMonthDropdown: {
+    position: 'absolute',
+    top: 36,
+    left: 0,
+    minWidth: 196,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surface,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+  },
+  operationsMonthOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.7)',
+  },
+  operationsMonthOptionActive: {
+    backgroundColor: themeColors.infoSoft,
+  },
+  operationsMonthOptionText: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsMonthOptionTextActive: {
+    color: themeColors.info,
+    fontWeight: '700',
+  },
+  operationsActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  operationsActionButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: themeColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  operationsActionIcon: {
+    fontSize: 22,
+    lineHeight: 24,
+    marginTop: 4,
+    color: '#1c284f',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  operationsActionLabel: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#334155',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTitle: {
+    marginTop: 18,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: '#1a244a',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSearchBox: {
+    marginTop: 14,
+    height: 66,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: themeColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  operationsSearchIcon: {
+    width: 24,
+    height: 24,
+  },
+  operationsSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTypeRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 14,
+  },
+  operationsTypeChip: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    backgroundColor: themeColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  operationsTypeChipActive: {
+    borderColor: '#4ade80',
+    backgroundColor: '#f5fff8',
+  },
+  operationsTypeChipText: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    color: '#1f2d4f',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTypeChipTextActive: {
+    color: '#16a34a',
+  },
+  operationsSummaryCard: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: themeColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  operationsSummaryHeader: {
+    gap: 14,
+  },
+  operationsSummaryMonthBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  operationsSummaryIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: themeColors.infoSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationsSummaryIcon: {
+    width: 30,
+    height: 30,
+  },
+  operationsSummaryMonthTextWrap: {
+    flex: 1,
+  },
+  operationsSummaryCount: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: '#1b2445',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSummaryMonth: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSummaryMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+  },
+  operationsSummaryMetricDivider: {
+    width: 1,
+    marginVertical: 4,
+    backgroundColor: 'rgba(226,232,240,0.9)',
+  },
+  operationsMetricItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  operationsMetricLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsMetricValue: {
+    marginTop: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsListCard: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: themeColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  operationsRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.85)',
+    paddingVertical: 14,
+  },
+  operationsRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 10,
+  },
+  operationsRowIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationsRowIcon: {
+    width: '170%',
+    height: '170%',
+  },
+  operationsRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  operationsRowTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    color: '#151f43',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsRowSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsRowAmount: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyListState: {
+    paddingVertical: 22,
+    alignItems: 'center',
+  },
+  operationsEmptyListTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: '#1a244a',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsEmptyListText: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsAddButton: {
+    marginTop: 22,
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: themeColors.income,
+    paddingHorizontal: 34,
+    paddingVertical: 14,
+  },
+  operationsAddButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  operationsAddIcon: {
+    width: 20,
+    height: 20,
+  },
+  operationsAddButtonText: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  operationsModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.28)',
+  },
+  operationsModalCard: {
+    backgroundColor: themeColors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+  },
+  operationsModalTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    color: '#1b2445',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalChoices: {
+    marginTop: 14,
+    gap: 10,
+  },
+  operationsChoiceRow: {
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: themeColors.surfaceAlt,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  operationsChoiceRowActive: {
+    borderColor: themeColors.primary,
+    backgroundColor: themeColors.primarySoft,
+  },
+  operationsChoiceRowText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: '#1f2d4f',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  operationsChoiceRowTextActive: {
+    color: themeColors.primary,
+    fontWeight: '700',
+  },
+  operationsChoiceRowCheck: {
+    fontSize: 18,
+    lineHeight: 20,
+    color: themeColors.primary,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalResetButton: {
+    marginTop: 16,
+    height: 52,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.surface,
+  },
+  operationsModalResetButtonText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: themeColors.textPrimary,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalCloseButton: {
+    marginTop: 12,
+    height: 52,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.primary,
+  },
+  operationsModalCloseButtonText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f4f8ff',
+    paddingHorizontal: 20,
+  },
+  operationsEmptyGlowTop: {
+    position: 'absolute',
+    top: -136,
+    left: -120,
+    width: 300,
+    height: 300,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  operationsEmptyCard: {
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    gap: 8,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    elevation: 4,
+  },
+  operationsEmptyTitle: {
+    color: '#1b2445',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyText: {
+    color: themeColors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: fontFamilies.sans,
   },
   placeholderScreen: {
     flex: 1,
