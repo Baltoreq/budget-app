@@ -58,6 +58,8 @@ Do not replace `wpływ` with `przychód` unless the product requirements are cha
 
 Internal TypeScript identifiers may use English names, but visible labels and validation messages must use Polish.
 
+When adding or changing user-visible text, always add or update translation keys and values for every language currently supported by the app. Do not ship new UI text translated in only one locale.
+
 ---
 
 ## 3. MVP Functional Scope
@@ -191,6 +193,8 @@ Rules:
 3. Changing the currency changes only the displayed currency code or symbol.
 4. Existing numeric values are not converted.
 5. Show a warning before changing currency after financial data has been added.
+6. Never hardcode currency symbols in UI components or domain logic.
+7. Currency display must come from the currently selected currency configuration, and every newly introduced currency must be added as a selectable option in settings.
 
 ### 3.7 Local-only data
 

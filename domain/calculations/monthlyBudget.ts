@@ -1,8 +1,9 @@
+import { AppError } from "../../lib/appErrors";
 import type { BudgetTransaction, MonthlyBudget, MonthlyCarryover, OpeningBalanceOverride, YearMonth } from "../../types/budget";
 
 function toMinorInt(value: number): number {
   if (!Number.isInteger(value)) {
-    throw new Error("Kwota musi być liczbą całkowitą w mniejszych jednostkach.");
+    throw new AppError("amount-minor-integer");
   }
 
   return value;
@@ -12,7 +13,7 @@ export function deriveMonthFromDate(date: string): YearMonth {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
 
   if (!match) {
-    throw new Error("Nieprawidłowy format daty. Oczekiwano YYYY-MM-DD.");
+    throw new AppError("date-format-invalid");
   }
 
   const year = Number(match[1]);
@@ -23,7 +24,7 @@ export function deriveMonthFromDate(date: string): YearMonth {
   const roundTripped = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
 
   if (roundTripped !== date) {
-    throw new Error("Nieprawidłowa data. Użyj poprawnej daty kalendarzowej YYYY-MM-DD.");
+    throw new AppError("date-invalid");
   }
 
   return `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}` as YearMonth;
@@ -39,7 +40,7 @@ export function nextMonth(month: YearMonth): YearMonth {
   const monthIndex = Number(monthRaw);
 
   if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 1 || monthIndex > 12) {
-    throw new Error("Nieprawidłowy miesiąc. Oczekiwano YYYY-MM.");
+    throw new AppError("month-invalid");
   }
 
   const nextYear = monthIndex === 12 ? year + 1 : year;

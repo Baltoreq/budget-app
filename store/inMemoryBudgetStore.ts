@@ -4,6 +4,7 @@ import {
   deriveMonthFromDate,
   enumerateMonthRange,
 } from "../domain/calculations/monthlyBudget";
+import { AppError } from "../lib/appErrors";
 import type {
   AccountBalance,
   BudgetDataSeed,
@@ -25,13 +26,13 @@ function nowIso(): string {
 
 function assertMinorAmount(amountMinor: number): void {
   if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
-    throw new Error("Kwota musi być dodatnią liczbą całkowitą w mniejszych jednostkach.");
+    throw new AppError("amount-minor-positive");
   }
 }
 
 function assertDate(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error("Data operacji musi mieć format YYYY-MM-DD.");
+    throw new AppError("date-format-invalid");
   }
 
   const [yearPart, monthPart, dayPart] = value.split("-");
@@ -45,13 +46,13 @@ function assertDate(value: string): void {
     parsed.getUTCMonth() + 1 !== month ||
     parsed.getUTCDate() !== day
   ) {
-    throw new Error("Data operacji jest nieprawidłowa.");
+    throw new AppError("date-invalid");
   }
 }
 
 function assertMonth(value: string): void {
   if (!/^\d{4}-\d{2}$/.test(value)) {
-    throw new Error("Miesiąc przypisania musi mieć format YYYY-MM.");
+    throw new AppError("month-format-invalid");
   }
 
   const [yearPart, monthPart] = value.split("-");
@@ -60,7 +61,7 @@ function assertMonth(value: string): void {
   const parsed = new Date(Date.UTC(year, month - 1, 1));
 
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month) {
-    throw new Error("Miesiąc przypisania jest nieprawidłowy.");
+    throw new AppError("month-invalid");
   }
 }
 
@@ -107,7 +108,7 @@ export class InMemoryBudgetStore {
     const name = sanitizeCategoryName(input.name);
 
     if (!name) {
-      throw new Error("Nazwa kategorii jest wymagana.");
+      throw new AppError("category-name-required");
     }
 
     const duplicateExists = this.categories.some(
@@ -115,7 +116,7 @@ export class InMemoryBudgetStore {
     );
 
     if (duplicateExists) {
-      throw new Error("Kategoria o tej nazwie już istnieje dla tego typu.");
+      throw new AppError("category-name-duplicate");
     }
 
     const category: Category = {
@@ -136,14 +137,14 @@ export class InMemoryBudgetStore {
     const index = this.categories.findIndex((category) => category.id === categoryId);
 
     if (index < 0) {
-      throw new Error("Nie znaleziono kategorii.");
+      throw new AppError("category-not-found");
     }
 
     const existing = this.categories[index];
     const nextName = input.name === undefined ? existing.name : sanitizeCategoryName(input.name);
 
     if (!nextName) {
-      throw new Error("Nazwa kategorii jest wymagana.");
+      throw new AppError("category-name-required");
     }
 
     const duplicateExists = this.categories.some(
@@ -154,7 +155,7 @@ export class InMemoryBudgetStore {
     );
 
     if (duplicateExists) {
-      throw new Error("Kategoria o tej nazwie już istnieje dla tego typu.");
+      throw new AppError("category-name-duplicate");
     }
 
     const updated: Category = {
@@ -173,9 +174,7 @@ export class InMemoryBudgetStore {
     const usedByTransaction = this.transactions.some((tx) => tx.categoryId === categoryId);
 
     if (usedByTransaction) {
-      throw new Error(
-        "Nie można usunąć tej kategorii, ponieważ jest przypisana do istniejących operacji. Najpierw usuń powiązane operacje lub zmień ich kategorię.",
-      );
+      throw new AppError("category-in-use");
     }
 
     this.categories = this.categories.filter((category) => category.id !== categoryId);
@@ -243,11 +242,11 @@ export class InMemoryBudgetStore {
     const category = this.categories.find((item) => item.id === input.categoryId);
 
     if (!category) {
-      throw new Error("Wybrana kategoria nie istnieje.");
+      throw new AppError("category-missing");
     }
 
     if (category.type !== input.type) {
-      throw new Error("Typ operacji musi odpowiadać typowi kategorii.");
+      throw new AppError("transaction-type-mismatch");
     }
 
     const createdAt = nowIso();
@@ -271,7 +270,7 @@ export class InMemoryBudgetStore {
     const index = this.transactions.findIndex((tx) => tx.id === transactionId);
 
     if (index < 0) {
-      throw new Error("Nie znaleziono operacji.");
+      throw new AppError("transaction-not-found");
     }
 
     const existing = this.transactions[index];
@@ -290,11 +289,11 @@ export class InMemoryBudgetStore {
     const category = this.categories.find((item) => item.id === categoryId);
 
     if (!category) {
-      throw new Error("Wybrana kategoria nie istnieje.");
+      throw new AppError("category-missing");
     }
 
     if (category.type !== existing.type) {
-      throw new Error("Typ operacji musi odpowiadać typowi kategorii.");
+      throw new AppError("transaction-type-mismatch");
     }
 
     const updated: BudgetTransaction = {
@@ -317,7 +316,7 @@ export class InMemoryBudgetStore {
 
   setOpeningBalanceOverride(month: YearMonth, amountMinor: number): void {
     if (!Number.isInteger(amountMinor)) {
-      throw new Error("Saldo początkowe musi być liczbą całkowitą w mniejszych jednostkach.");
+      throw new AppError("opening-balance-integer");
     }
 
     assertMonth(month);

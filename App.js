@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File } from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
-import { Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { budgetStore } from './store';
+import { createLocalizationBundle, detectPreferredCurrency, detectPreferredLanguage, supportedCurrencies, translateAppErrorMessage } from './lib/i18n';
 import { fontFamilies, radii, themeColors } from './theme';
 
 const onboardingHero = require('./assets/onboarding-bg.png');
@@ -20,6 +21,7 @@ const openingBalanceMetricIcon = require('./assets/opening balance.png');
 const incomeMetricIcon = require('./assets/income.png');
 const outcomeMetricIcon = require('./assets/outcome.png');
 const balanceMetricIcon = require('./assets/balance.png');
+const checkListIcon = require('./assets/check-list.png');
 const groceriesCategoryIcon = require('./assets/groceries.png');
 const transportCategoryIcon = require('./assets/transport.png');
 const rentCategoryIcon = require('./assets/rent.png');
@@ -30,9 +32,40 @@ const walletIcon = require('./assets/wallet.png');
 const transferIcon = require('./assets/transfer.png');
 const shoppingBagIcon = require('./assets/shopping-bag.png');
 const moneyBagIcon = require('./assets/money-bag.png');
+const mainNavDashboardIcon = require('./assets/main-nav-dashboard.png');
+const mainNavOperationsIcon = require('./assets/main-nav-operations.png');
+const mainNavAnalyticsIcon = require('./assets/main-nav-analitycis.png');
+const mainNavMoreIcon = require('./assets/main-nav-more.png');
+const categoriesMenuIcon = require('./assets/categories.png');
+const openingBalanceMenuIcon = require('./assets/opening balance.png');
+const currencyMenuIcon = require('./assets/currency.png');
+const languageMenuIcon = require('./assets/languages.png');
+const themeMenuIcon = require('./assets/style.png');
+const aboutMenuIcon = require('./assets/about.png');
+const deleteMenuIcon = require('./assets/delete.png');
 
 const ONBOARDING_STORAGE_KEY = '@homebudget/onboarding-shown';
 const ONBOARDING_FILE_NAME = 'homebudget-onboarding-state.json';
+const LANGUAGE_STORAGE_KEY = '@homebudget/language-code';
+const LANGUAGE_FILE_NAME = 'homebudget-language-state.json';
+const CURRENCY_STORAGE_KEY = '@homebudget/currency-code';
+const CURRENCY_FILE_NAME = 'homebudget-currency-state.json';
+
+const LocalizationContext = createContext(null);
+
+function useLocalization() {
+  const value = useContext(LocalizationContext);
+
+  if (!value) {
+    throw new Error('LocalizationContext is missing.');
+  }
+
+  return value;
+}
+
+function isSupportedCurrencyCode(value) {
+  return typeof value === 'string' && supportedCurrencies.includes(value);
+}
 
 async function readOnboardingState() {
   if (Platform.OS === 'web') {
@@ -126,6 +159,193 @@ async function clearOnboardingState() {
   }
 }
 
+async function readLanguageState() {
+  if (Platform.OS === 'web') {
+    try {
+      return await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Unable to read language state from AsyncStorage', error);
+      return null;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${LANGUAGE_FILE_NAME}`,
+      name: LANGUAGE_FILE_NAME,
+      size: 0,
+    });
+
+    const exists = await file.exists;
+    if (!exists) {
+      return null;
+    }
+
+    const savedValue = await file.text();
+    return savedValue === 'pl' || savedValue === 'en' ? savedValue : null;
+  } catch (error) {
+    try {
+      const savedValue = await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
+      return savedValue === 'pl' || savedValue === 'en' ? savedValue : null;
+    } catch (storageError) {
+      console.warn('Unable to read language state', storageError);
+      return null;
+    }
+  }
+}
+
+async function writeLanguageState(languageCode) {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, languageCode);
+      return;
+    } catch (error) {
+      console.warn('Unable to persist language state via AsyncStorage', error);
+      return;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${LANGUAGE_FILE_NAME}`,
+      name: LANGUAGE_FILE_NAME,
+      size: 0,
+    });
+
+    await file.write(languageCode, { encoding: 'utf8' });
+  } catch (error) {
+    try {
+      await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, languageCode);
+    } catch (storageError) {
+      console.warn('Unable to persist language state', storageError);
+    }
+  }
+}
+
+async function clearLanguageState() {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Unable to clear language state from AsyncStorage', error);
+    }
+
+    return;
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${LANGUAGE_FILE_NAME}`,
+      name: LANGUAGE_FILE_NAME,
+      size: 0,
+    });
+
+    await file.delete();
+  } catch (error) {
+    console.warn('Unable to clear language state file', error);
+  }
+
+  try {
+    await AsyncStorage.removeItem(LANGUAGE_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear language state from AsyncStorage', error);
+  }
+}
+
+async function readCurrencyState() {
+  if (Platform.OS === 'web') {
+    try {
+      const savedValue = await AsyncStorage.getItem(CURRENCY_STORAGE_KEY);
+      return isSupportedCurrencyCode(savedValue) ? savedValue : null;
+    } catch (error) {
+      console.warn('Unable to read currency state from AsyncStorage', error);
+      return null;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${CURRENCY_FILE_NAME}`,
+      name: CURRENCY_FILE_NAME,
+      size: 0,
+    });
+
+    const exists = await file.exists;
+    if (!exists) {
+      return null;
+    }
+
+    const savedValue = await file.text();
+    return isSupportedCurrencyCode(savedValue) ? savedValue : null;
+  } catch (error) {
+    try {
+      const savedValue = await AsyncStorage.getItem(CURRENCY_STORAGE_KEY);
+      return isSupportedCurrencyCode(savedValue) ? savedValue : null;
+    } catch (storageError) {
+      console.warn('Unable to read currency state', storageError);
+      return null;
+    }
+  }
+}
+
+async function writeCurrencyState(currencyCode) {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.setItem(CURRENCY_STORAGE_KEY, currencyCode);
+      return;
+    } catch (error) {
+      console.warn('Unable to persist currency state via AsyncStorage', error);
+      return;
+    }
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${CURRENCY_FILE_NAME}`,
+      name: CURRENCY_FILE_NAME,
+      size: 0,
+    });
+
+    await file.write(currencyCode, { encoding: 'utf8' });
+  } catch (error) {
+    try {
+      await AsyncStorage.setItem(CURRENCY_STORAGE_KEY, currencyCode);
+    } catch (storageError) {
+      console.warn('Unable to persist currency state', storageError);
+    }
+  }
+}
+
+async function clearCurrencyState() {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.removeItem(CURRENCY_STORAGE_KEY);
+    } catch (error) {
+      console.warn('Unable to clear currency state from AsyncStorage', error);
+    }
+
+    return;
+  }
+
+  try {
+    const file = new File({
+      uri: `${Directory.document.uri}${CURRENCY_FILE_NAME}`,
+      name: CURRENCY_FILE_NAME,
+      size: 0,
+    });
+
+    await file.delete();
+  } catch (error) {
+    console.warn('Unable to clear currency state file', error);
+  }
+
+  try {
+    await AsyncStorage.removeItem(CURRENCY_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear currency state from AsyncStorage', error);
+  }
+}
+
 const monthFormatter = new Intl.DateTimeFormat('pl-PL', {
   month: 'long',
   year: 'numeric',
@@ -160,12 +380,12 @@ const operationMonthDisplayFormatter = new Intl.DateTimeFormat('pl-PL', {
   year: 'numeric',
 });
 
-const calendarWeekdayLabels = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
+const calendarWeekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const mainTabs = [
-  { key: 'dashboard', label: 'Dashboard', icon: '⌂' },
-  { key: 'operations', label: 'Operacje', icon: '☰' },
-  { key: 'analytics', label: 'Analizy', icon: '◔' },
-  { key: 'more', label: 'Więcej', icon: '◼' },
+  { key: 'dashboard', label: 'Dashboard', iconSource: mainNavDashboardIcon },
+  { key: 'operations', label: 'Operations', iconSource: mainNavOperationsIcon },
+  { key: 'analytics', label: 'Analytics', iconSource: mainNavAnalyticsIcon },
+  { key: 'more', label: 'More', iconSource: mainNavMoreIcon },
 ];
 
 function formatMinorCurrency(amountMinor) {
@@ -205,11 +425,11 @@ function resolveTransactionTypeIcon(type) {
 function resolveCategoryIcon(name) {
   const normalized = name.trim().toLowerCase();
 
-  if (normalized === 'inne') {
+  if (normalized === 'inne' || normalized === 'other') {
     return othersCategoryIcon;
   }
 
-  if (normalized.includes('jedzenie') || normalized.includes('zakupy')) {
+  if (normalized.includes('jedzenie') || normalized.includes('zakupy') || normalized.includes('food') || normalized.includes('groceries') || normalized.includes('shopping')) {
     return groceriesCategoryIcon;
   }
 
@@ -217,11 +437,11 @@ function resolveCategoryIcon(name) {
     return transportCategoryIcon;
   }
 
-  if (normalized.includes('mieszkanie') || normalized.includes('czynsz') || normalized.includes('rent')) {
+  if (normalized.includes('mieszkanie') || normalized.includes('czynsz') || normalized.includes('rent') || normalized.includes('housing') || normalized.includes('home')) {
     return rentCategoryIcon;
   }
 
-  if (normalized.includes('rozrywka')) {
+  if (normalized.includes('rozrywka') || normalized.includes('entertainment')) {
     return entertainmentCategoryIcon;
   }
 
@@ -260,7 +480,7 @@ function normalizeSearchValue(value) {
     .toLocaleLowerCase('pl-PL')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l');
+    .replace(/\u0142/g, 'l');
 }
 
 function buildDonutSegments(entries, totalAmountMinor) {
@@ -368,6 +588,9 @@ function withRoundedSharePercent(entries, totalAmountMinor) {
 }
 
 function DashboardDonutChart({ totalAmountMinor, segments }) {
+  const { strings, formatters } = useLocalization();
+  const { formatMinorCurrency } = formatters;
+
   return (
     <View style={styles.dashboardDonutOuter}>
       <View style={styles.dashboardDonutTrack} />
@@ -387,7 +610,7 @@ function DashboardDonutChart({ totalAmountMinor, segments }) {
       ))}
       <View style={styles.dashboardDonutInner}>
         <Text style={styles.dashboardDonutAmount}>{formatMinorCurrency(totalAmountMinor)}</Text>
-        <Text style={styles.dashboardDonutLabel}>łącznie</Text>
+        <Text style={styles.dashboardDonutLabel}>{strings.common.total}</Text>
       </View>
     </View>
   );
@@ -414,6 +637,411 @@ function formatOperationMonthFromDate(date) {
   return `${formatted.charAt(0).toUpperCase()}${formatted.slice(1)}`;
 }
 
+function formatOperationCount(count) {
+  return count === 1 ? '1 operacja' : `${count} operacji`;
+}
+
+const operationTypeFilterOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'income', label: 'Income' },
+  { value: 'expense', label: 'Expenses' },
+];
+
+const operationSortOptions = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'amountAsc', label: 'Amount ascending' },
+  { value: 'amountDesc', label: 'Amount descending' },
+];
+
+function resolveOperationRowIcon(transaction, category) {
+  if (transaction.type === 'income') {
+    return incomeMetricIcon;
+  }
+
+  return resolveCategoryIconFromKey(category?.icon) ?? resolveCategoryIcon(category?.name ?? '') ?? outcomeMetricIcon;
+}
+
+function OperationsMetric({ label, value, valueColor }) {
+  return (
+    <View style={styles.operationsMetricItem}>
+      <Text style={styles.operationsMetricLabel}>{label}</Text>
+      <Text style={[styles.operationsMetricValue, { color: valueColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function OperationTypeChip({ label, active, onPress }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[styles.operationsTypeChip, active && styles.operationsTypeChipActive]} onPress={onPress}>
+      <Text style={[styles.operationsTypeChipText, active && styles.operationsTypeChipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function OperationChoiceRow({ label, active, onPress }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} style={[styles.operationsChoiceRow, active && styles.operationsChoiceRowActive]} onPress={onPress}>
+      <Text style={[styles.operationsChoiceRowText, active && styles.operationsChoiceRowTextActive]}>{label}</Text>
+      {active ? <Text style={styles.operationsChoiceRowCheck}>✓</Text> : null}
+    </Pressable>
+  );
+}
+
+function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVersion }) {
+  const { strings, formatters } = useLocalization();
+  const {
+    formatMinorCurrency,
+    formatSignedMinorCurrency,
+    formatMonthLabel,
+    formatOperationDate,
+    formatOperationCount,
+    normalizeSearchValue,
+  } = formatters;
+
+  const operationTypeFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: strings.operations.typeFilters.all },
+      { value: 'income', label: strings.operations.typeFilters.income },
+      { value: 'expense', label: strings.operations.typeFilters.expense },
+    ],
+    [strings],
+  );
+
+  const operationSortOptions = useMemo(
+    () => [
+      { value: 'newest', label: strings.operations.sortOptions.newest },
+      { value: 'oldest', label: strings.operations.sortOptions.oldest },
+      { value: 'amountAsc', label: strings.operations.sortOptions.amountAsc },
+      { value: 'amountDesc', label: strings.operations.sortOptions.amountDesc },
+    ],
+    [strings],
+  );
+
+  const operationsData = useMemo(() => {
+    const budgets = budgetStore.getMonthlyBudgets();
+    const transactions = budgetStore.getTransactions();
+    const categoriesById = new Map(budgetStore.getCategories().map((category) => [category.id, category]));
+    const budgetsByMonth = new Map(budgets.map((budget) => [budget.month, budget]));
+    const availableMonths = budgets.map((budget) => budget.month);
+
+    return {
+      budgetsByMonth,
+      categoriesById,
+      availableMonths,
+      latestMonth: availableMonths[availableMonths.length - 1] ?? null,
+      transactionCountByMonth: transactions.reduce((accumulator, transaction) => {
+        accumulator[transaction.assignedMonth] = (accumulator[transaction.assignedMonth] ?? 0) + 1;
+        return accumulator;
+      }, {}),
+    };
+  }, [dataVersion]);
+
+  const [selectedMonth, setSelectedMonth] = useState(() => operationsData.latestMonth);
+  const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [searchInput, setSearchInput] = useState('');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!operationsData.latestMonth) {
+      setSelectedMonth(null);
+      return;
+    }
+
+    if (!selectedMonth || !operationsData.availableMonths.includes(selectedMonth)) {
+      setSelectedMonth(operationsData.latestMonth);
+    }
+  }, [operationsData.availableMonths, operationsData.latestMonth, selectedMonth]);
+
+  const selectedBudget = selectedMonth ? operationsData.budgetsByMonth.get(selectedMonth) ?? null : null;
+  const monthTransactions = useMemo(() => {
+    if (!selectedMonth) {
+      return [];
+    }
+
+    const selectedType = typeFilter === 'all' ? undefined : typeFilter;
+    const normalizedQuery = normalizeSearchValue(searchInput);
+    const baseTransactions = budgetStore.getTransactions({ month: selectedMonth, type: selectedType }, sortOrder);
+
+    return baseTransactions
+      .filter((transaction) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const category = operationsData.categoriesById.get(transaction.categoryId);
+        const haystack = [
+          transaction.description,
+          category?.name,
+          transaction.type === 'income' ? strings.operations.transactionIncome : strings.operations.transactionExpense,
+          formatOperationDate(transaction.operationDate),
+          formatMonthLabel(transaction.assignedMonth),
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return normalizeSearchValue(haystack).includes(normalizedQuery);
+      })
+      .map((transaction) => ({
+        transaction,
+        category: operationsData.categoriesById.get(transaction.categoryId) ?? null,
+      }));
+  }, [formatMonthLabel, formatOperationDate, normalizeSearchValue, operationsData.categoriesById, searchInput, selectedMonth, sortOrder, strings.operations.transactionExpense, strings.operations.transactionIncome, typeFilter]);
+
+  const monthTransactionCount = selectedMonth ? (operationsData.transactionCountByMonth[selectedMonth] ?? 0) : 0;
+
+  if (!operationsData.latestMonth || !selectedBudget || !selectedMonth) {
+    return (
+      <SafeAreaView style={styles.operationsEmptyScreen}>
+        <View style={styles.operationsEmptyGlowTop} />
+        <View style={styles.operationsEmptyCard}>
+          <Text style={styles.operationsEmptyTitle}>{strings.operations.emptyTitle}</Text>
+          <Text style={styles.operationsEmptyText}>{strings.operations.emptyText}</Text>
+          <Pressable accessibilityRole="button" style={styles.operationsAddButton} onPress={onOpenAddTransaction}>
+            <View style={styles.operationsAddButtonRow}>
+              <Image source={addIcon} resizeMode="contain" style={styles.operationsAddIcon} />
+              <Text style={styles.operationsAddButtonText}>{strings.operations.addOperation}</Text>
+            </View>
+          </Pressable>
+        </View>
+        <StatusBar style="dark" />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.operationsScreen}>
+      <View style={styles.operationsGlowLeft} />
+      <View style={styles.operationsGlowRight} />
+
+      <ScrollView
+        style={styles.operationsScroll}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 68,
+          paddingBottom: 28,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.operationsTopRow}>
+          <View style={styles.operationsMonthSelectorWrap}>
+            <Pressable accessibilityRole="button" style={styles.operationsMonthSelectorButton} onPress={() => setIsMonthDropdownOpen((open) => !open)}>
+              <Text style={styles.operationsMonthText}>{formatMonthLabel(selectedMonth)}</Text>
+              <Text style={styles.operationsMonthChevron}>{isMonthDropdownOpen ? '▲' : '▼'}</Text>
+            </Pressable>
+
+            {isMonthDropdownOpen ? (
+              <View style={styles.operationsMonthDropdown}>
+                {operationsData.availableMonths.map((month) => {
+                  const isActive = month === selectedMonth;
+
+                  return (
+                    <Pressable
+                      key={month}
+                      accessibilityRole="button"
+                      style={[styles.operationsMonthOption, isActive && styles.operationsMonthOptionActive]}
+                      onPress={() => {
+                        setSelectedMonth(month);
+                        setIsMonthDropdownOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.operationsMonthOptionText, isActive && styles.operationsMonthOptionTextActive]}>{formatMonthLabel(month)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.operationsActionGroup}>
+            <Pressable accessibilityRole="button" accessibilityLabel={strings.operations.filterButton} hitSlop={8} style={styles.operationsActionButton} onPress={() => setIsFilterModalOpen(true)}>
+              <Text style={styles.operationsActionIcon}>≡</Text>
+              <Text style={styles.operationsActionLabel}>{strings.operations.filterButton}</Text>
+            </Pressable>
+
+            <Pressable accessibilityRole="button" accessibilityLabel={strings.operations.sortButton} hitSlop={8} style={styles.operationsActionButton} onPress={() => setIsSortModalOpen(true)}>
+              <Text style={styles.operationsActionIcon}>↕</Text>
+              <Text style={styles.operationsActionLabel}>{strings.operations.sortButton}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Text style={styles.operationsTitle}>{strings.operations.title}</Text>
+
+        <View style={styles.operationsSearchBox}>
+          <Image source={searchIcon} resizeMode="contain" style={styles.operationsSearchIcon} />
+          <TextInput
+            style={styles.operationsSearchInput}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            placeholder={strings.operations.searchPlaceholder}
+            placeholderTextColor="#8c99b6"
+            accessibilityLabel={strings.operations.searchLabel}
+          />
+        </View>
+
+        <View style={styles.operationsTypeRow}>
+          {operationTypeFilterOptions.map((option) => (
+            <OperationTypeChip
+              key={option.value}
+              label={option.label}
+              active={typeFilter === option.value}
+              onPress={() => setTypeFilter(option.value)}
+            />
+          ))}
+        </View>
+
+        <View style={styles.operationsSummaryCard}>
+          <View style={styles.operationsSummaryHeader}>
+            <View style={styles.operationsSummaryMonthBlock}>
+              <View style={styles.operationsSummaryIconWrap}>
+                <Image source={checkListIcon} resizeMode="contain" style={styles.operationsSummaryIcon} />
+              </View>
+              <View style={styles.operationsSummaryMonthTextWrap}>
+                <Text style={styles.operationsSummaryCount}>{formatOperationCount(monthTransactionCount)}</Text>
+                <Text style={styles.operationsSummaryMonth}>{formatMonthLabel(selectedMonth)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.operationsSummaryMetricsRow}>
+                  <OperationsMetric label={strings.operations.incomeMetric} value={formatMinorCurrency(selectedBudget.totalIncomeMinor)} valueColor={themeColors.income} />
+              <View style={styles.operationsSummaryMetricDivider} />
+                  <OperationsMetric label={strings.operations.expenseMetric} value={formatMinorCurrency(selectedBudget.totalExpenseMinor)} valueColor={themeColors.expense} />
+              <View style={styles.operationsSummaryMetricDivider} />
+              <OperationsMetric
+                    label={strings.operations.balanceMetric}
+                value={formatSignedMinorCurrency(selectedBudget.monthlyResultMinor)}
+                valueColor={selectedBudget.monthlyResultMinor >= 0 ? themeColors.income : themeColors.expense}
+              />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.operationsListCard}>
+          {monthTransactions.length === 0 ? (
+            <View style={styles.operationsEmptyListState}>
+              <Text style={styles.operationsEmptyListTitle}>{strings.operations.noResultsTitle}</Text>
+              <Text style={styles.operationsEmptyListText}>{strings.operations.noResultsText}</Text>
+            </View>
+          ) : (
+            monthTransactions.map(({ transaction, category }) => {
+              const isIncome = transaction.type === 'income';
+              const rowIcon = resolveOperationRowIcon(transaction, category);
+              const rowColor = category?.color ?? (isIncome ? themeColors.income : themeColors.expense);
+
+              return (
+                <Pressable
+                  key={transaction.id}
+                  accessibilityRole="button"
+                  style={styles.operationsRow}
+                  onPress={() => onOpenEditTransaction(transaction.id)}
+                >
+                  <View style={styles.operationsRowLeft}>
+                    <View style={[styles.operationsRowIconWrap, { backgroundColor: isIncome ? themeColors.incomeSoft : categoryPillBackground(rowColor) }]}>
+                      <Image source={rowIcon} resizeMode="contain" style={styles.operationsRowIcon} />
+                    </View>
+
+                    <View style={styles.operationsRowTextWrap}>
+                      <Text style={styles.operationsRowTitle} numberOfLines={1}>
+                        {transaction.description || category?.name || strings.operations.operationFallback}
+                      </Text>
+                      <Text style={styles.operationsRowSubtitle} numberOfLines={1}>
+                        {isIncome ? strings.operations.transactionIncome : strings.operations.transactionExpense} • {formatOperationDate(transaction.operationDate)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.operationsRowAmount, { color: isIncome ? themeColors.income : themeColors.expense }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                    {formatSignedMinorCurrency(isIncome ? transaction.amountMinor : -transaction.amountMinor)}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
+
+        <Pressable accessibilityRole="button" accessibilityLabel={strings.operations.addOperation} style={styles.operationsAddButton} onPress={onOpenAddTransaction}>
+          <View style={styles.operationsAddButtonRow}>
+            <Image source={addIcon} resizeMode="contain" style={styles.operationsAddIcon} />
+            <Text style={styles.operationsAddButtonText}>{strings.operations.addOperation}</Text>
+          </View>
+        </Pressable>
+      </ScrollView>
+
+      <Modal visible={isFilterModalOpen} transparent animationType="fade" onRequestClose={() => setIsFilterModalOpen(false)}>
+        <View style={styles.operationsModalOverlay}>
+          <Pressable style={styles.operationsModalBackdrop} onPress={() => setIsFilterModalOpen(false)} />
+
+          <View style={styles.operationsModalCard}>
+            <Text style={styles.operationsModalTitle}>{strings.operations.filterModalTitle}</Text>
+            <Text style={styles.operationsModalSubtitle}>{strings.operations.filterModalSubtitle}</Text>
+
+            <View style={styles.operationsModalChoices}>
+              {operationTypeFilterOptions.map((option) => (
+                <OperationChoiceRow
+                  key={option.value}
+                  label={option.label}
+                  active={typeFilter === option.value}
+                  onPress={() => setTypeFilter(option.value)}
+                />
+              ))}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              style={styles.operationsModalResetButton}
+              onPress={() => {
+                setTypeFilter('all');
+                setSearchInput('');
+              }}
+            >
+              <Text style={styles.operationsModalResetButtonText}>{strings.operations.clearFilters}</Text>
+            </Pressable>
+
+            <Pressable accessibilityRole="button" style={styles.operationsModalCloseButton} onPress={() => setIsFilterModalOpen(false)}>
+              <Text style={styles.operationsModalCloseButtonText}>{strings.common.close}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isSortModalOpen} transparent animationType="fade" onRequestClose={() => setIsSortModalOpen(false)}>
+        <View style={styles.operationsModalOverlay}>
+          <Pressable style={styles.operationsModalBackdrop} onPress={() => setIsSortModalOpen(false)} />
+
+          <View style={styles.operationsModalCard}>
+            <Text style={styles.operationsModalTitle}>{strings.operations.sortModalTitle}</Text>
+            <Text style={styles.operationsModalSubtitle}>{strings.operations.sortModalSubtitle}</Text>
+
+            <View style={styles.operationsModalChoices}>
+              {operationSortOptions.map((option) => (
+                <OperationChoiceRow
+                  key={option.value}
+                  label={option.label}
+                  active={sortOrder === option.value}
+                  onPress={() => setSortOrder(option.value)}
+                />
+              ))}
+            </View>
+
+            <Pressable accessibilityRole="button" style={styles.operationsModalCloseButton} onPress={() => setIsSortModalOpen(false)}>
+              <Text style={styles.operationsModalCloseButtonText}>{strings.common.close}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
 function normalizeAmountInput(rawValue) {
   const compact = rawValue.replace(/\s+/g, '');
   const digitsAndSeparators = compact.replace(/[^\d.,]/g, '');
@@ -437,6 +1065,18 @@ function parseAmountInputToMinor(value) {
   }
 
   return Math.round(parsed * 100);
+}
+
+function parseDateOnlyToLocalDate(dateOnly) {
+  const [year, month, day] = dateOnly.split('-').map((value) => Number(value));
+  return new Date(year, month - 1, day);
+}
+
+function toDateOnlyString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function isSameLocalDate(left, right) {
@@ -485,6 +1125,8 @@ function buildCalendarMonthCells(viewMonthDate) {
 }
 
 function HomeScreen({ onOpenOnboarding, onClearStorage }) {
+  const { strings } = useLocalization();
+
   return (
     <SafeAreaView style={styles.homeScreen}>
       <View style={styles.homeGlowTop} />
@@ -498,15 +1140,15 @@ function HomeScreen({ onOpenOnboarding, onClearStorage }) {
               <Text style={styles.homeBrandNameDark}>Home</Text>
               <Text style={styles.homeBrandNameBlue}>Budget</Text>
             </Text>
-            <Text style={styles.homeBrandTagline}>Ekran startowy aplikacji</Text>
+            <Text style={styles.homeBrandTagline}>{strings.home.tagline}</Text>
           </View>
         </View>
 
         <View style={styles.homeCard}>
-          <Text style={styles.homeCardTitle}>Wejdź do onboarding&apos;u</Text>
-          <Text style={styles.homeCardText}>Otwórz ekran powitalny, aby zobaczyć układ przygotowany dokładnie pod załączony projekt.</Text>
-          <AppLink label="Otwórz aplikację" onPress={onOpenOnboarding} />
-          <AppLink label="Wyczyść AsyncStorage" onPress={onClearStorage} />
+          <Text style={styles.homeCardTitle}>{strings.home.cardTitle}</Text>
+          <Text style={styles.homeCardText}>{strings.home.cardText}</Text>
+          <AppLink label={strings.home.openApp} onPress={onOpenOnboarding} />
+          <AppLink label={strings.home.clearStorage} onPress={onClearStorage} />
         </View>
       </View>
 
@@ -540,6 +1182,9 @@ function DashboardMetricCard({ iconSource, label, value, valueColor, iconWrapSty
 }
 
 function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
+  const { strings, formatters } = useLocalization();
+  const { formatMinorCurrency, formatSignedMinorCurrency, formatMonthLabel, formatOperationDate } = formatters;
+
   const dashboardData = useMemo(() => {
     const budgets = budgetStore.getMonthlyBudgets();
     const transactions = budgetStore.getTransactions();
@@ -606,7 +1251,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
         return {
           categoryId,
           amountMinor,
-          name: category?.name ?? 'Inne',
+          name: category?.name ?? strings.common.other,
           color: category?.color ?? '#94A3B8',
         };
       })
@@ -629,7 +1274,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
       expenseBreakdownUnrounded.push({
         categoryId: 'cat-others',
         amountMinor: remainingAmountMinor,
-        name: 'Inne',
+        name: strings.common.other,
         color: '#8B5CF6',
       });
     }
@@ -649,7 +1294,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
       recentTransactions,
       availableMonths: dashboardData.monthsWithData,
     };
-  }, [dashboardData, selectedMonth, visibleExpenseCategoryLimit]);
+  }, [dashboardData, selectedMonth, strings.common.other, visibleExpenseCategoryLimit]);
 
   const visibleExpenseBreakdown = useMemo(() => {
     if (!model) {
@@ -677,10 +1322,10 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
   if (!model) {
     return (
       <SafeAreaView style={styles.dashboardEmptyScreen}>
-        <Text style={styles.dashboardEmptyTitle}>Brak danych budżetu</Text>
-        <Text style={styles.dashboardEmptyText}>Dodaj operacje, aby zobaczyć podsumowanie dashboardu.</Text>
+        <Text style={styles.dashboardEmptyTitle}>{strings.dashboard.noBudgetData}</Text>
+        <Text style={styles.dashboardEmptyText}>{strings.dashboard.noBudgetDataText}</Text>
         <Pressable accessibilityRole="button" onPress={onBackHome} style={styles.dashboardBackButton}>
-          <Text style={styles.dashboardBackButtonText}>Wróć</Text>
+          <Text style={styles.dashboardBackButtonText}>{strings.dashboard.backButton}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -743,7 +1388,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
 
         <View style={styles.dashboardMainCard}>
           <View style={styles.dashboardMainCardHeaderRow}>
-            <Text style={styles.dashboardMainCardLabel}>Bilans miesiąca</Text>
+            <Text style={styles.dashboardMainCardLabel}>{strings.dashboard.monthBalance}</Text>
           </View>
           <View style={styles.dashboardMainCardRow}>
             <Text style={styles.dashboardMainCardValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.64}>{formatSignedMinorCurrency(model.monthSummary.monthlyResultMinor)}</Text>
@@ -754,28 +1399,28 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
           <DashboardMetricCard
             iconSource={openingBalanceMetricIcon}
             iconWrapStyle={styles.dashboardMetricIconInfo}
-            label="Saldo początkowe"
+            label={strings.dashboard.openingBalance}
             value={formatMinorCurrency(model.monthSummary.openingBalanceMinor)}
             valueColor="#1b2445"
           />
           <DashboardMetricCard
             iconSource={incomeMetricIcon}
             iconWrapStyle={styles.dashboardMetricIconIncome}
-            label="Suma wpływów"
+            label={strings.dashboard.totalIncome}
             value={formatMinorCurrency(model.monthSummary.totalIncomeMinor)}
             valueColor="#16A34A"
           />
           <DashboardMetricCard
             iconSource={outcomeMetricIcon}
             iconWrapStyle={styles.dashboardMetricIconExpense}
-            label="Suma wydatków"
+            label={strings.dashboard.totalExpense}
             value={formatMinorCurrency(model.monthSummary.totalExpenseMinor)}
             valueColor="#DC2626"
           />
           <DashboardMetricCard
             iconSource={balanceMetricIcon}
             iconWrapStyle={styles.dashboardMetricIconWarning}
-            label="Saldo końcowe"
+            label={strings.dashboard.closingBalance}
             value={formatMinorCurrency(model.monthSummary.closingBalanceMinor)}
             valueColor="#1b2445"
           />
@@ -784,8 +1429,8 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
         <View style={styles.dashboardSectionCard}>
           <View style={[styles.dashboardSectionHeader, styles.dashboardSectionHeaderTopAligned]}>
             <View style={styles.dashboardSectionHeaderLeft}>
-              <Text style={styles.dashboardSectionTitle}>Wydatki według kategorii</Text>
-              <Text style={styles.dashboardSectionSubtitle}>{formatMinorCurrency(model.monthSummary.totalExpenseMinor)} łącznie</Text>
+              <Text style={styles.dashboardSectionTitle}>{strings.dashboard.expensesByCategory}</Text>
+              <Text style={styles.dashboardSectionSubtitle}>{formatMinorCurrency(model.monthSummary.totalExpenseMinor)} {strings.dashboard.expensesTotalSuffix}</Text>
             </View>
             {hasMoreExpenseCategories ? (
               <Pressable
@@ -793,7 +1438,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
                 style={styles.dashboardSeeAllPill}
                 onPress={() => setShowAllExpenseCategories((current) => !current)}
               >
-                <Text style={styles.dashboardSeeAllPillText}>{showAllExpenseCategories ? 'Pokaż mniej' : 'Zobacz wszystkie'}</Text>
+                <Text style={styles.dashboardSeeAllPillText}>{showAllExpenseCategories ? strings.dashboard.showLess : strings.dashboard.showAll}</Text>
               </Pressable>
             ) : null}
           </View>
@@ -808,7 +1453,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
 
             <View style={styles.dashboardBreakdownCol}>
               {visibleExpenseBreakdown.length === 0 ? (
-                <Text style={styles.dashboardEmptyBreakdownText}>Brak wydatków w tym miesiącu.</Text>
+                <Text style={styles.dashboardEmptyBreakdownText}>{strings.dashboard.noExpenses}</Text>
               ) : (
                 visibleExpenseBreakdown.map((entry) => {
                   const categoryIcon = resolveCategoryIcon(entry.name);
@@ -841,21 +1486,21 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
 
         <View style={styles.dashboardSectionCard}>
           <View style={styles.dashboardSectionHeader}>
-            <Text style={styles.dashboardSectionTitle}>Ostatnie operacje</Text>
+            <Text style={styles.dashboardSectionTitle}>{strings.dashboard.recentTransactions}</Text>
             {hasMoreTransactions ? (
               <Pressable
                 accessibilityRole="button"
                 style={styles.dashboardSeeAllPill}
                 onPress={() => setShowAllRecentTransactions((current) => !current)}
               >
-                <Text style={styles.dashboardSeeAllPillText}>{showAllRecentTransactions ? 'Pokaż mniej' : 'Zobacz wszystkie'}</Text>
+                <Text style={styles.dashboardSeeAllPillText}>{showAllRecentTransactions ? strings.dashboard.showLess : strings.dashboard.showAll}</Text>
               </Pressable>
             ) : null}
           </View>
 
           <View style={styles.dashboardTransactionsList}>
             {visibleRecentTransactions.length === 0 ? (
-              <Text style={styles.dashboardEmptyBreakdownText}>Brak operacji w tym miesiącu.</Text>
+              <Text style={styles.dashboardEmptyBreakdownText}>{strings.dashboard.noTransactions}</Text>
             ) : (
               visibleRecentTransactions.map((tx) => {
                 const isIncome = tx.type === 'income';
@@ -869,9 +1514,9 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
                       </View>
 
                       <View>
-                        <Text style={styles.dashboardTransactionTitle}>{tx.description || tx.category?.name || 'Operacja'}</Text>
+                        <Text style={styles.dashboardTransactionTitle}>{tx.description || tx.category?.name || strings.dashboard.operationFallback}</Text>
                         <Text style={styles.dashboardTransactionSubtitle}>
-                          {isIncome ? 'Wpływ' : 'Wydatek'} • {formatOperationDate(tx.operationDate)}
+                          {isIncome ? strings.dashboard.transactionIncome : strings.dashboard.transactionExpense} • {formatOperationDate(tx.operationDate)}
                         </Text>
                       </View>
                     </View>
@@ -886,15 +1531,15 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityLabel="Dodaj operację" style={styles.dashboardAddButton} onPress={onOpenAddTransaction}>
+        <Pressable accessibilityRole="button" accessibilityLabel={strings.dashboard.addOperation} style={styles.dashboardAddButton} onPress={onOpenAddTransaction}>
           <View style={styles.dashboardAddButtonRow}>
             <Image source={addIcon} resizeMode="contain" style={styles.dashboardAddIcon} />
-            <Text style={styles.dashboardAddButtonText}>Dodaj operację</Text>
+            <Text style={styles.dashboardAddButtonText}>{strings.dashboard.addOperation}</Text>
           </View>
         </Pressable>
 
         <Pressable accessibilityRole="button" onPress={onBackHome} style={styles.dashboardBackButtonSecondary}>
-          <Text style={styles.dashboardBackButtonText}>Powrót do ekranu startowego</Text>
+          <Text style={styles.dashboardBackButtonText}>{strings.dashboard.backToHome}</Text>
         </Pressable>
       </ScrollView>
 
@@ -903,19 +1548,32 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
   );
 }
 
-function AddTransactionScreen({ onBack, onSave }) {
+function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = null, onDelete }) {
+  const { strings, formatters, language } = useLocalization();
+  const {
+    formatOperationDateWithWeekday,
+    formatOperationMonthFromDate,
+    formatAmountInput,
+    calendarWeekdayLabels,
+    normalizeSearchValue,
+    currencySymbol,
+  } = formatters;
+
   const addTxScrollRef = useRef(null);
-  const [type, setType] = useState('income');
-  const [operationDate, setOperationDate] = useState(() => new Date());
+  const isEditMode = mode === 'edit';
+  const [type, setType] = useState(() => transaction?.type ?? 'income');
+  const [operationDate, setOperationDate] = useState(() => (transaction ? parseDateOnlyToLocalDate(transaction.operationDate) : new Date()));
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [calendarViewMonth, setCalendarViewMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [amountInput, setAmountInput] = useState('0,00');
-  const [descriptionInput, setDescriptionInput] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState(() => budgetStore.getCategories('income')[0]?.id ?? null);
+  const [calendarViewMonth, setCalendarViewMonth] = useState(() => new Date(operationDate.getFullYear(), operationDate.getMonth(), 1));
+  const [amountInput, setAmountInput] = useState(() => formatAmountInput(transaction?.amountMinor ?? 0));
+  const [descriptionInput, setDescriptionInput] = useState(() => transaction?.description ?? '');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(() => transaction?.categoryId ?? budgetStore.getCategories('income')[0]?.id ?? null);
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [categoryDraftId, setCategoryDraftId] = useState(null);
   const [categorySearchInput, setCategorySearchInput] = useState('');
   const [isCategorySearchFocused, setIsCategorySearchFocused] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const isIncome = type === 'income';
   const calendarCells = useMemo(() => buildCalendarMonthCells(calendarViewMonth), [calendarViewMonth]);
   const calendarMonthLabel = formatOperationMonthFromDate(calendarViewMonth);
@@ -926,14 +1584,31 @@ function AddTransactionScreen({ onBack, onSave }) {
     () => categoriesForType.find((category) => category.id === selectedCategoryId) ?? null,
     [categoriesForType, selectedCategoryId],
   );
-  const categorySearchQuery = useMemo(() => normalizeSearchValue(categorySearchInput), [categorySearchInput]);
+  const categorySearchQuery = useMemo(() => normalizeSearchValue(categorySearchInput), [categorySearchInput, normalizeSearchValue]);
   const visibleCategories = useMemo(() => {
     if (!categorySearchQuery) {
       return categoriesForType;
     }
 
     return categoriesForType.filter((category) => normalizeSearchValue(category.name).includes(categorySearchQuery));
-  }, [categoriesForType, categorySearchQuery]);
+  }, [categoriesForType, categorySearchQuery, normalizeSearchValue]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    if (!transaction) {
+      return;
+    }
+
+    setType(transaction.type);
+    setOperationDate(parseDateOnlyToLocalDate(transaction.operationDate));
+    setCalendarViewMonth(new Date(parseDateOnlyToLocalDate(transaction.operationDate).getFullYear(), parseDateOnlyToLocalDate(transaction.operationDate).getMonth(), 1));
+    setAmountInput(formatAmountInput(transaction.amountMinor));
+    setDescriptionInput(transaction.description ?? '');
+    setSelectedCategoryId(transaction.categoryId);
+  }, [formatAmountInput, isEditMode, transaction]);
 
   useEffect(() => {
     if (categoriesForType.length === 0) {
@@ -966,6 +1641,41 @@ function AddTransactionScreen({ onBack, onSave }) {
     setIsCategoryPickerOpen(false);
   };
 
+  const handleSave = () => {
+    if (amountMinor === null || amountMinor <= 0) {
+      setSaveError(strings.validation.amountGreaterThanZero);
+      return;
+    }
+
+    if (!selectedCategoryId) {
+      setSaveError(strings.validation.selectCategory);
+      return;
+    }
+
+    setSaveError('');
+
+    try {
+      const payload = {
+        amountMinor,
+        operationDate: toDateOnlyString(operationDate),
+        categoryId: selectedCategoryId,
+        description: descriptionInput,
+      };
+
+      if (isEditMode) {
+        onSave(payload);
+        return;
+      }
+
+      onSave({
+        type,
+        ...payload,
+      });
+    } catch (error) {
+      setSaveError(translateAppErrorMessage(language, error));
+    }
+  };
+
   const categoryAccentColor = selectedCategory?.color ?? (isIncome ? themeColors.income : themeColors.expense);
   const selectedCategoryIcon = selectedCategory
     ? resolveCategoryIconFromKey(selectedCategory.icon) ?? resolveCategoryIcon(selectedCategory.name)
@@ -989,112 +1699,149 @@ function AddTransactionScreen({ onBack, onSave }) {
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           automaticallyAdjustKeyboardInsets
         >
-        <Pressable accessibilityRole="button" accessibilityLabel="Wróć do dashboardu" style={styles.addTxBackButton} onPress={onBack}>
-          <Image source={backArrowIcon} resizeMode="cover" style={styles.addTxBackButtonImage} />
-        </Pressable>
+          <View style={styles.addTxHeaderRow}>
+            <Pressable accessibilityRole="button" accessibilityLabel={strings.addTransaction.backLabel} style={styles.addTxBackButton} onPress={onBack}>
+              <Image source={backArrowIcon} resizeMode="cover" style={styles.addTxBackButtonImage} />
+            </Pressable>
 
-        <Text style={styles.addTxTitle}>Dodaj operację</Text>
-
-        <View style={styles.addTxTypeSegment}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: isIncome }}
-            style={[styles.addTxTypeButton, isIncome && styles.addTxTypeButtonIncomeActive]}
-            onPress={() => setType('income')}
-          >
-            <Image source={incomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
-            <Text style={[styles.addTxTypeText, isIncome && styles.addTxTypeTextIncome]}>Wpływ</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: !isIncome }}
-            style={[styles.addTxTypeButton, !isIncome && styles.addTxTypeButtonExpenseActive]}
-            onPress={() => setType('expense')}
-          >
-            <Image source={outcomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
-            <Text style={[styles.addTxTypeText, !isIncome && styles.addTxTypeTextExpense]}>Wydatek</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.addTxCard}>
-          <Text style={styles.addTxFieldLabel}>Kwota</Text>
-          <View style={styles.addTxAmountInputRow}>
-            <TextInput
-              style={styles.addTxAmountInput}
-              value={amountInput}
-              onChangeText={(text) => setAmountInput(normalizeAmountInput(text))}
-              keyboardType="decimal-pad"
-              placeholder="0,00"
-              placeholderTextColor={themeColors.textMuted}
-              accessibilityLabel="Kwota operacji"
-            />
-            <Text style={styles.addTxAmountCurrency}>zł</Text>
+            {isEditMode ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={strings.addTransaction.deleteIconLabel}
+                style={styles.addTxDeleteIconButton}
+                onPress={() => setIsDeleteConfirmOpen(true)}
+              >
+                <Text style={styles.addTxDeleteIconButtonText}>{strings.common.delete}</Text>
+              </Pressable>
+            ) : null}
           </View>
-          {amountHasError ? <Text style={styles.addTxErrorText}>Kwota musi być większa od zera</Text> : null}
-        </View>
 
-        <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCalendar}>
-          <Text style={styles.addTxFieldLabel}>Data operacji</Text>
-          <View style={styles.addTxInlineValueRow}>
-            <Image source={calendarIcon} resizeMode="contain" style={styles.addTxInlineImageIcon} />
-            <Text style={styles.addTxInlineValue}>{formatOperationDateWithWeekday(operationDate)}</Text>
-          </View>
-        </Pressable>
+          <Text style={styles.addTxTitle}>{isEditMode ? strings.addTransaction.editTitle : strings.addTransaction.createTitle}</Text>
 
-        <View style={[styles.addTxCard, styles.addTxCardDisabled]}>
-          <Text style={[styles.addTxFieldLabel, styles.addTxFieldLabelDisabled]}>Miesiąc operacji</Text>
-          <View style={styles.addTxInlineValueRowReadOnly}>
-            <Text style={[styles.addTxInlineValue, styles.addTxInlineValueDisabled]}>{formatOperationMonthFromDate(operationDate)}</Text>
-          </View>
-        </View>
-
-        <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCategoryPicker}>
-          <Text style={styles.addTxFieldLabel}>Kategoria</Text>
-          <View style={styles.addTxCategoryRow}>
-            <View style={[styles.addTxCategoryBadge, { backgroundColor: categoryPillBackground(categoryAccentColor) }]}>
-              {selectedCategoryIcon ? (
-                <Image source={selectedCategoryIcon} resizeMode="contain" style={styles.addTxCategoryBadgeImage} />
-              ) : (
-                <Text style={[styles.addTxCategoryBadgeIcon, { color: categoryAccentColor }]}>{selectedCategory ? categoryShortLabel(selectedCategory.name) : '?'}</Text>
-              )}
+          {isEditMode ? (
+            <View style={styles.addTxEditTypePillWrap}>
+              <View style={[styles.addTxEditTypePill, isIncome ? styles.addTxEditTypePillIncome : styles.addTxEditTypePillExpense]}>
+                <Text style={[styles.addTxEditTypePillArrow, isIncome ? styles.addTxEditTypePillArrowIncome : styles.addTxEditTypePillArrowExpense]}>
+                  ↗
+                </Text>
+                <Text style={[styles.addTxEditTypePillText, isIncome ? styles.addTxEditTypePillTextIncome : styles.addTxEditTypePillTextExpense]}>
+                  {isIncome ? strings.addTransaction.typeIncome : strings.addTransaction.typeExpense}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.addTxCategoryText}>{selectedCategory?.name ?? 'Wybierz kategorię'}</Text>
-            <Text style={styles.addTxCategoryChevron}>›</Text>
-          </View>
-        </Pressable>
+          ) : (
+            <View style={styles.addTxTypeSegment}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: isIncome }}
+                style={[styles.addTxTypeButton, isIncome && styles.addTxTypeButtonIncomeActive]}
+                onPress={() => setType('income')}
+              >
+                <Image source={incomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
+                <Text style={[styles.addTxTypeText, isIncome && styles.addTxTypeTextIncome]}>{strings.addTransaction.typeIncome}</Text>
+              </Pressable>
 
-        <View style={styles.addTxCard}>
-          <Text style={styles.addTxFieldLabel}>Opis (opcjonalnie)</Text>
-          <View style={styles.addTxDescriptionBox}>
-            <TextInput
-              style={styles.addTxDescriptionInput}
-              placeholder="Dodaj opis..."
-              placeholderTextColor={themeColors.textMuted}
-              multiline
-              value={descriptionInput}
-              onChangeText={setDescriptionInput}
-              maxLength={120}
-              textAlignVertical="top"
-              onFocus={() => addTxScrollRef.current?.scrollToEnd({ animated: true })}
-            />
-            <Text style={styles.addTxCounterText}>{descriptionInput.length}/120</Text>
-          </View>
-        </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: !isIncome }}
+                style={[styles.addTxTypeButton, !isIncome && styles.addTxTypeButtonExpenseActive]}
+                onPress={() => setType('expense')}
+              >
+                <Image source={outcomeMetricIcon} resizeMode="contain" style={styles.addTxTypeIconImage} />
+                <Text style={[styles.addTxTypeText, !isIncome && styles.addTxTypeTextExpense]}>{strings.addTransaction.typeExpense}</Text>
+              </Pressable>
+            </View>
+          )}
 
-        <View style={styles.addTxInfoCard}>
-          <Text style={styles.addTxInfoIcon}>◌</Text>
-          <View style={styles.addTxInfoContent}>
-            <Text style={styles.addTxInfoTitle}>Informacja</Text>
-            <Text style={styles.addTxInfoText}>
-              Miesiąc operacji jest uzupełniany automatycznie na podstawie podanej daty i nie można go zmienić ręcznie.
-            </Text>
+          <View style={styles.addTxCard}>
+            <Text style={styles.addTxFieldLabel}>{strings.addTransaction.amountLabel}</Text>
+            <View style={styles.addTxAmountInputRow}>
+              <TextInput
+                style={styles.addTxAmountInput}
+                value={amountInput}
+                onChangeText={(text) => {
+                  setAmountInput(normalizeAmountInput(text));
+                  if (saveError) {
+                    setSaveError('');
+                  }
+                }}
+                keyboardType="decimal-pad"
+                placeholder={strings.addTransaction.amountPlaceholder}
+                placeholderTextColor={themeColors.textMuted}
+                accessibilityLabel={strings.addTransaction.amountLabel}
+              />
+              <Text style={styles.addTxAmountCurrency}>{currencySymbol}</Text>
+            </View>
+            {amountHasError ? <Text style={styles.addTxErrorText}>{strings.addTransaction.amountError}</Text> : null}
           </View>
-        </View>
 
-        <Pressable accessibilityRole="button" style={styles.addTxSaveButton} onPress={onSave}>
-          <Text style={styles.addTxSaveButtonText}>Zapisz operację</Text>
-        </Pressable>
+          <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCalendar}>
+            <Text style={styles.addTxFieldLabel}>{strings.addTransaction.dateLabel}</Text>
+            <View style={styles.addTxInlineValueRow}>
+              <Image source={calendarIcon} resizeMode="contain" style={styles.addTxInlineImageIcon} />
+              <Text style={styles.addTxInlineValue}>{formatOperationDateWithWeekday(operationDate)}</Text>
+            </View>
+          </Pressable>
+
+          <View style={[styles.addTxCard, styles.addTxCardDisabled]}>
+            <Text style={[styles.addTxFieldLabel, styles.addTxFieldLabelDisabled]}>{strings.addTransaction.monthLabel}</Text>
+            <View style={styles.addTxInlineValueRowReadOnly}>
+              <Text style={[styles.addTxInlineValue, styles.addTxInlineValueDisabled]}>{formatOperationMonthFromDate(operationDate)}</Text>
+            </View>
+          </View>
+
+          <Pressable accessibilityRole="button" style={styles.addTxCard} onPress={openCategoryPicker}>
+            <Text style={styles.addTxFieldLabel}>{strings.addTransaction.categoryLabel}</Text>
+            <View style={styles.addTxCategoryRow}>
+              <View style={[styles.addTxCategoryBadge, { backgroundColor: categoryPillBackground(categoryAccentColor) }]}>
+                {selectedCategoryIcon ? (
+                  <Image source={selectedCategoryIcon} resizeMode="contain" style={styles.addTxCategoryBadgeImage} />
+                ) : (
+                  <Text style={[styles.addTxCategoryBadgeIcon, { color: categoryAccentColor }]}>{selectedCategory ? categoryShortLabel(selectedCategory.name) : '?'}</Text>
+                )}
+              </View>
+              <Text style={styles.addTxCategoryText}>{selectedCategory?.name ?? strings.addTransaction.categoryPlaceholder}</Text>
+              <Text style={styles.addTxCategoryChevron}>›</Text>
+            </View>
+          </Pressable>
+
+          <View style={styles.addTxCard}>
+            <Text style={styles.addTxFieldLabel}>{strings.addTransaction.descriptionLabel}</Text>
+            <View style={styles.addTxDescriptionBox}>
+              <TextInput
+                style={styles.addTxDescriptionInput}
+                placeholder={strings.addTransaction.descriptionPlaceholder}
+                placeholderTextColor={themeColors.textMuted}
+                multiline
+                value={descriptionInput}
+                onChangeText={setDescriptionInput}
+                maxLength={120}
+                textAlignVertical="top"
+                onFocus={() => addTxScrollRef.current?.scrollToEnd({ animated: true })}
+              />
+              <Text style={styles.addTxCounterText}>{descriptionInput.length}/120</Text>
+            </View>
+          </View>
+
+          {saveError ? <Text style={styles.addTxErrorText}>{saveError}</Text> : null}
+
+          <View style={styles.addTxInfoCard}>
+            <Text style={styles.addTxInfoIcon}>◌</Text>
+            <View style={styles.addTxInfoContent}>
+              <Text style={styles.addTxInfoTitle}>{strings.addTransaction.infoTitle}</Text>
+              <Text style={styles.addTxInfoText}>{strings.addTransaction.infoText}</Text>
+            </View>
+          </View>
+
+          <Pressable accessibilityRole="button" style={styles.addTxSaveButton} onPress={handleSave}>
+            <Text style={styles.addTxSaveButtonText}>{isEditMode ? strings.addTransaction.saveChanges : strings.addTransaction.saveOperation}</Text>
+          </Pressable>
+
+          {isEditMode ? (
+            <Pressable accessibilityRole="button" style={styles.addTxDeleteButton} onPress={() => setIsDeleteConfirmOpen(true)}>
+              <Text style={styles.addTxDeleteButtonText}>{strings.addTransaction.deleteOperation}</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1106,7 +1853,7 @@ function AddTransactionScreen({ onBack, onSave }) {
             <View style={styles.calendarModalHeader}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Poprzedni miesiąc"
+                accessibilityLabel={strings.addTransaction.calendarPrevMonth}
                 style={styles.calendarNavButton}
                 onPress={() => setCalendarViewMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
               >
@@ -1117,7 +1864,7 @@ function AddTransactionScreen({ onBack, onSave }) {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Następny miesiąc"
+                accessibilityLabel={strings.addTransaction.calendarNextMonth}
                 style={styles.calendarNavButton}
                 onPress={() => setCalendarViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
               >
@@ -1165,7 +1912,7 @@ function AddTransactionScreen({ onBack, onSave }) {
             </View>
 
             <Pressable accessibilityRole="button" style={styles.calendarCloseButton} onPress={() => setIsCalendarOpen(false)}>
-              <Text style={styles.calendarCloseButtonText}>Anuluj</Text>
+              <Text style={styles.calendarCloseButtonText}>{strings.addTransaction.calendarCancel}</Text>
             </Pressable>
           </View>
         </View>
@@ -1178,14 +1925,14 @@ function AddTransactionScreen({ onBack, onSave }) {
           <View style={styles.selectCategoryContainer}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Wróć do formularza"
+              accessibilityLabel={strings.addTransaction.backLabel}
               style={styles.selectCategoryBackButton}
               onPress={() => setIsCategoryPickerOpen(false)}
             >
               <Image source={backArrowIcon} resizeMode="cover" style={styles.addTxBackButtonImage} />
             </Pressable>
 
-            <Text style={styles.selectCategoryTitle}>Wybierz kategorię</Text>
+            <Text style={styles.selectCategoryTitle}>{strings.addTransaction.selectCategoryTitle}</Text>
 
             <View style={styles.selectCategoryTypePillWrap}>
               <View style={[styles.selectCategoryTypePill, isIncome ? styles.selectCategoryTypePillIncome : styles.selectCategoryTypePillExpense]}>
@@ -1193,12 +1940,12 @@ function AddTransactionScreen({ onBack, onSave }) {
                   ↗
                 </Text>
                 <Text style={[styles.selectCategoryTypePillText, isIncome ? styles.selectCategoryTypePillTextIncome : styles.selectCategoryTypePillTextExpense]}>
-                  {isIncome ? 'Wpływ' : 'Wydatek'}
+                  {isIncome ? strings.addTransaction.typeIncome : strings.addTransaction.typeExpense}
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.selectCategoryHint}>Pokazano tylko kategorie pasujące do typu operacji.</Text>
+            <Text style={styles.selectCategoryHint}>{strings.addTransaction.selectCategoryTypeHint}</Text>
 
             <View style={styles.selectCategorySearchBox}>
               <Image source={searchIcon} resizeMode="contain" style={styles.selectCategorySearchIcon} />
@@ -1208,9 +1955,9 @@ function AddTransactionScreen({ onBack, onSave }) {
                 onChangeText={setCategorySearchInput}
                 onFocus={() => setIsCategorySearchFocused(true)}
                 onBlur={() => setIsCategorySearchFocused(false)}
-                placeholder="Szukaj kategorii"
+                placeholder={strings.addTransaction.selectCategorySearchPlaceholder}
                 placeholderTextColor="#8c99b6"
-                accessibilityLabel="Szukaj kategorii"
+                accessibilityLabel={strings.addTransaction.selectCategorySearchLabel}
               />
             </View>
 
@@ -1223,8 +1970,8 @@ function AddTransactionScreen({ onBack, onSave }) {
             >
               {visibleCategories.length === 0 ? (
                 <View style={styles.selectCategoryEmptyCard}>
-                  <Text style={styles.selectCategoryEmptyTitle}>Brak wyników</Text>
-                  <Text style={styles.selectCategoryEmptyText}>Zmień wpisaną frazę, aby znaleźć kategorię.</Text>
+                  <Text style={styles.selectCategoryEmptyTitle}>{strings.addTransaction.selectCategoryEmptyTitle}</Text>
+                  <Text style={styles.selectCategoryEmptyText}>{strings.addTransaction.selectCategoryEmptyText}</Text>
                 </View>
               ) : (
                 visibleCategories.map((category) => {
@@ -1269,7 +2016,7 @@ function AddTransactionScreen({ onBack, onSave }) {
             {!isCategorySearchFocused ? (
               <>
                 <Pressable accessibilityRole="button" style={styles.selectCategoryManageLink}>
-                  <Text style={styles.selectCategoryManageLinkText}>Zarządzaj kategoriami</Text>
+                  <Text style={styles.selectCategoryManageLinkText}>{strings.addTransaction.selectCategoryManageLink}</Text>
                 </Pressable>
 
                 <Pressable
@@ -1278,7 +2025,7 @@ function AddTransactionScreen({ onBack, onSave }) {
                   onPress={saveCategorySelection}
                   disabled={categoryDraftId === null}
                 >
-                  <Text style={styles.selectCategorySaveButtonText}>Zapisz wybór</Text>
+                  <Text style={styles.selectCategorySaveButtonText}>{strings.addTransaction.selectCategorySaveButton}</Text>
                 </Pressable>
               </>
             ) : null}
@@ -1288,31 +2035,341 @@ function AddTransactionScreen({ onBack, onSave }) {
         </SafeAreaView>
       </Modal>
 
+      <Modal visible={isDeleteConfirmOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteConfirmOpen(false)}>
+        <View style={styles.addTxConfirmOverlay}>
+          <Pressable style={styles.addTxConfirmBackdrop} onPress={() => setIsDeleteConfirmOpen(false)} />
+
+          <View style={styles.addTxConfirmCard}>
+            <Text style={styles.addTxConfirmTitle}>{strings.addTransaction.deleteConfirmationTitle}</Text>
+            <Text style={styles.addTxConfirmText}>{strings.addTransaction.deleteConfirmationText}</Text>
+
+            <View style={styles.addTxConfirmActions}>
+              <Pressable accessibilityRole="button" style={styles.addTxConfirmCancelButton} onPress={() => setIsDeleteConfirmOpen(false)}>
+                <Text style={styles.addTxConfirmCancelButtonText}>{strings.addTransaction.deleteConfirmationCancel}</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                style={styles.addTxConfirmDeleteButton}
+                onPress={() => {
+                  setIsDeleteConfirmOpen(false);
+                  onDelete?.();
+                }}
+              >
+                <Text style={styles.addTxConfirmDeleteButtonText}>{strings.addTransaction.deleteConfirmationConfirm}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <StatusBar style="dark" />
     </SafeAreaView>
   );
 }
 
 function PlaceholderTabScreen({ title }) {
+  const { strings } = useLocalization();
+
   return (
     <SafeAreaView style={styles.placeholderScreen}>
       <View style={styles.placeholderCard}>
         <Text style={styles.placeholderTitle}>{title}</Text>
-        <Text style={styles.placeholderSubtitle}>Ta sekcja jest przygotowana jako placeholder i zostanie uzupełniona w kolejnym kroku.</Text>
+        <Text style={styles.placeholderSubtitle}>{strings.more.placeholderFallback}</Text>
       </View>
       <StatusBar style="dark" />
     </SafeAreaView>
   );
 }
 
+function MoreMenuRow({ iconSource, iconBackgroundColor, title, subtitle, value, onPress, isLast = false, destructive = false }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.moreRow,
+        !isLast && styles.moreRowWithDivider,
+        pressed && styles.moreRowPressed,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.moreRowLeft}>
+        <View style={[styles.moreRowIconWrap, { backgroundColor: iconBackgroundColor }]}>
+          <Image source={iconSource} resizeMode="contain" style={styles.moreRowIconImage} />
+        </View>
+
+        <View style={styles.moreRowTextWrap}>
+          <Text style={[styles.moreRowTitle, destructive && styles.moreRowTitleDestructive]}>{title}</Text>
+          {subtitle ? <Text style={styles.moreRowSubtitle}>{subtitle}</Text> : null}
+        </View>
+      </View>
+
+      <View style={styles.moreRowRight}>
+        {value ? <Text style={styles.moreRowValue}>{value}</Text> : null}
+        <Text style={[styles.moreRowChevron, destructive && styles.moreRowChevronDestructive]}>›</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function MoreScreen() {
+  const { strings, language, setLanguage, currencyCode, setCurrency } = useLocalization();
+  const [themeMode, setThemeMode] = useState('light');
+  const [activeSelector, setActiveSelector] = useState(null);
+  const [placeholderEntry, setPlaceholderEntry] = useState(null);
+
+  const handleCurrencySelection = (nextCurrencyCode) => {
+    if (nextCurrencyCode === currencyCode) {
+      setActiveSelector(null);
+      return;
+    }
+
+    const hasFinancialData = budgetStore.getTransactions().length > 0 || budgetStore.getOpeningBalanceOverrides().length > 0;
+
+    if (!hasFinancialData) {
+      setCurrency(nextCurrencyCode);
+      setActiveSelector(null);
+      return;
+    }
+
+    Alert.alert(
+      strings.more.currencyChangeWarningTitle,
+      strings.more.currencyChangeWarningText,
+      [
+        {
+          text: strings.common.cancel,
+          style: 'cancel',
+        },
+        {
+          text: strings.more.currencyChangeWarningConfirm,
+          onPress: () => {
+            setCurrency(nextCurrencyCode);
+            setActiveSelector(null);
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
+  const activeSelectorConfig = useMemo(() => {
+    if (activeSelector === 'currency') {
+      return {
+        title: strings.more.modalTitles.currency,
+        selectedValue: currencyCode,
+        options: [
+          { value: 'PLN', label: strings.currencies.PLN },
+          { value: 'EUR', label: strings.currencies.EUR },
+          { value: 'USD', label: strings.currencies.USD },
+        ],
+        onSelect: handleCurrencySelection,
+      };
+    }
+
+    if (activeSelector === 'language') {
+      return {
+        title: strings.more.modalTitles.language,
+        selectedValue: language,
+        options: [
+          { value: 'pl', label: strings.languages.pl },
+          { value: 'en', label: strings.languages.en },
+        ],
+        onSelect: setLanguage,
+      };
+    }
+
+    if (activeSelector === 'theme') {
+      return {
+        title: strings.more.modalTitles.theme,
+        selectedValue: themeMode,
+        options: [{ value: 'light', label: strings.themes.light }],
+        onSelect: setThemeMode,
+      };
+    }
+
+    return null;
+  }, [activeSelector, currencyCode, handleCurrencySelection, language, setLanguage, strings, themeMode]);
+
+  return (
+    <SafeAreaView style={styles.moreScreen}>
+      <View style={styles.moreGlowTop} />
+      <View style={styles.moreGlowBottom} />
+
+      <ScrollView
+        style={styles.moreScroll}
+        contentContainerStyle={styles.moreScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.moreHeader}>
+          <Text style={styles.moreTitle}>{strings.more.title}</Text>
+          <Text style={styles.moreSubtitle}>{strings.more.subtitle}</Text>
+        </View>
+
+        <View style={styles.moreSectionCard}>
+          <Text style={styles.moreSectionTitle}>{strings.more.sections.budget}</Text>
+          <MoreMenuRow
+            iconSource={categoriesMenuIcon}
+            iconBackgroundColor="#E9F9EF"
+            title={strings.more.items.categories}
+            subtitle={strings.more.subtitles.categories}
+            onPress={() => setPlaceholderEntry('categories')}
+          />
+          <MoreMenuRow
+            iconSource={openingBalanceMenuIcon}
+            iconBackgroundColor="#E8F1FF"
+            title={strings.more.items.openingBalance}
+            subtitle={strings.more.subtitles.openingBalance}
+            onPress={() => setPlaceholderEntry('openingBalance')}
+            isLast
+          />
+        </View>
+
+        <View style={styles.moreSectionCard}>
+          <Text style={styles.moreSectionTitle}>{strings.more.sections.settings}</Text>
+          <MoreMenuRow
+            iconSource={currencyMenuIcon}
+            iconBackgroundColor="#E9F9EF"
+            title={strings.more.items.currency}
+            value={currencyCode}
+            onPress={() => setActiveSelector('currency')}
+          />
+          <MoreMenuRow
+            iconSource={languageMenuIcon}
+            iconBackgroundColor="#E8F1FF"
+            title={strings.more.items.language}
+            value={strings.languages[language]}
+            onPress={() => setActiveSelector('language')}
+          />
+          <MoreMenuRow
+            iconSource={themeMenuIcon}
+            iconBackgroundColor="#FFF4E6"
+            title={strings.more.items.theme}
+            value={strings.themes[themeMode]}
+            onPress={() => setActiveSelector('theme')}
+            isLast
+          />
+        </View>
+
+        <View style={styles.moreSectionCard}>
+          <Text style={styles.moreSectionTitle}>{strings.more.sections.appData}</Text>
+          <MoreMenuRow
+            iconSource={deleteMenuIcon}
+            iconBackgroundColor="#FEECEC"
+            title={strings.more.items.deleteAll}
+            subtitle={strings.more.subtitles.deleteAll}
+            destructive
+            onPress={() => setPlaceholderEntry('deleteAll')}
+            isLast
+          />
+        </View>
+
+        <View style={styles.moreSectionCard}>
+          <Text style={styles.moreSectionTitle}>{strings.more.sections.about}</Text>
+          <MoreMenuRow
+            iconSource={aboutMenuIcon}
+            iconBackgroundColor="#F3E8FF"
+            title={strings.more.items.about}
+            onPress={() => setPlaceholderEntry('about')}
+            isLast
+          />
+        </View>
+      </ScrollView>
+
+      <Modal
+        visible={activeSelectorConfig !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveSelector(null)}
+      >
+        <View style={styles.moreModalOverlay}>
+          <Pressable style={styles.moreModalBackdrop} onPress={() => setActiveSelector(null)} />
+
+          <View style={styles.moreModalCard}>
+            <Text style={styles.moreModalTitle}>{activeSelectorConfig?.title}</Text>
+            {activeSelectorConfig?.options.length === 1 ? <Text style={styles.moreModalSubtitle}>{strings.more.oneOptionAvailable}</Text> : null}
+
+            <View style={styles.moreModalOptionList}>
+              {activeSelectorConfig?.options.map((option) => {
+                const isActive = option.value === activeSelectorConfig.selectedValue;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                    style={[styles.moreModalOptionRow, isActive && styles.moreModalOptionRowActive]}
+                    onPress={() => {
+                      activeSelectorConfig.onSelect(option.value);
+                      if (activeSelector !== 'language') {
+                        setActiveSelector(null);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.moreModalOptionText, isActive && styles.moreModalOptionTextActive]}>{option.label}</Text>
+                    {isActive ? <Text style={styles.moreModalOptionCheck}>✓</Text> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              style={styles.moreModalCloseButton}
+              onPress={() => setActiveSelector(null)}
+            >
+              <Text style={styles.moreModalCloseButtonText}>{strings.common.close}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={placeholderEntry !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPlaceholderEntry(null)}
+      >
+        <View style={styles.moreModalOverlay}>
+          <Pressable style={styles.moreModalBackdrop} onPress={() => setPlaceholderEntry(null)} />
+
+          <View style={styles.moreModalCard}>
+            <Text style={styles.moreModalTitle}>{placeholderEntry ? strings.placeholders[placeholderEntry] : strings.more.placeholderFallback}</Text>
+            <Text style={styles.moreModalSubtitle}>{strings.more.placeholderFallback}</Text>
+
+            <Pressable
+              accessibilityRole="button"
+              style={styles.moreModalCloseButton}
+              onPress={() => setPlaceholderEntry(null)}
+            >
+              <Text style={styles.moreModalCloseButtonText}>{strings.more.placeholderConfirm}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
 function BottomTabBar({ activeTab, onChangeTab }) {
+  const { strings } = useLocalization();
   const [barWidth, setBarWidth] = useState(0);
   const activeX = useRef(new Animated.Value(0)).current;
   const circleSize = 54;
   const tabsBarInnerHorizontalPadding = 8;
   const contentWidth = barWidth > 0 ? barWidth - (tabsBarInnerHorizontalPadding * 2) : 0;
-  const tabSlotWidth = contentWidth > 0 ? contentWidth / mainTabs.length : 0;
-  const activeTabIndex = Math.max(0, mainTabs.findIndex((item) => item.key === activeTab));
+  const mainTabsLocalized = useMemo(
+    () => [
+      { key: 'dashboard', label: strings.tabs.dashboard, iconSource: mainNavDashboardIcon },
+      { key: 'operations', label: strings.tabs.operations, iconSource: mainNavOperationsIcon },
+      { key: 'analytics', label: strings.tabs.analytics, iconSource: mainNavAnalyticsIcon },
+      { key: 'more', label: strings.tabs.more, iconSource: mainNavMoreIcon },
+    ],
+    [strings],
+  );
+  const tabSlotWidth = contentWidth > 0 ? contentWidth / mainTabsLocalized.length : 0;
+  const activeTabIndex = Math.max(0, mainTabsLocalized.findIndex((item) => item.key === activeTab));
 
   useEffect(() => {
     if (tabSlotWidth <= 0) {
@@ -1330,7 +2387,7 @@ function BottomTabBar({ activeTab, onChangeTab }) {
     }).start();
   }, [activeTabIndex, activeX, tabSlotWidth]);
 
-  const activeTabConfig = mainTabs[activeTabIndex] ?? mainTabs[0];
+  const activeTabConfig = mainTabsLocalized[activeTabIndex] ?? mainTabsLocalized[0];
 
   return (
     <View style={styles.tabsBarOuter}>
@@ -1352,11 +2409,11 @@ function BottomTabBar({ activeTab, onChangeTab }) {
               },
             ]}
           >
-            <Text style={styles.tabsActiveCircleIcon}>{activeTabConfig.icon}</Text>
+            <Image source={activeTabConfig.iconSource} style={styles.tabsActiveCircleIcon} resizeMode="contain" />
           </Animated.View>
         ) : null}
 
-        {mainTabs.map((tab) => {
+        {mainTabsLocalized.map((tab) => {
           const isActive = tab.key === activeTab;
 
           return (
@@ -1367,7 +2424,7 @@ function BottomTabBar({ activeTab, onChangeTab }) {
               style={styles.tabsButton}
               onPress={() => onChangeTab(tab.key)}
             >
-              {isActive ? <View style={styles.tabsActiveSpacer} /> : <Text style={styles.tabsIcon}>{tab.icon}</Text>}
+              {isActive ? <View style={styles.tabsActiveSpacer} /> : <Image source={tab.iconSource} style={styles.tabsIconImage} resizeMode="contain" />}
               {isActive ? null : <Text style={styles.tabsLabel}>{tab.label}</Text>}
             </Pressable>
           );
@@ -1377,18 +2434,20 @@ function BottomTabBar({ activeTab, onChangeTab }) {
   );
 }
 
-function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction }) {
+function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction, onOpenEditTransaction, dataVersion }) {
+  const { strings } = useLocalization();
+
   const activeScreen = (() => {
     if (activeTab === 'operations') {
-      return <PlaceholderTabScreen title="Operacje" />;
+      return <OperationsScreen onOpenAddTransaction={onOpenAddTransaction} onOpenEditTransaction={onOpenEditTransaction} dataVersion={dataVersion} />;
     }
 
     if (activeTab === 'analytics') {
-      return <PlaceholderTabScreen title="Analizy" />;
+      return <PlaceholderTabScreen title={strings.tabs.analytics} />;
     }
 
     if (activeTab === 'more') {
-      return <PlaceholderTabScreen title="Więcej" />;
+      return <MoreScreen />;
     }
 
     return <DashboardScreen onBackHome={onBackHome} onOpenAddTransaction={onOpenAddTransaction} />;
@@ -1403,6 +2462,7 @@ function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransacti
 }
 
 function OnboardingScreen({ onStartDashboard }) {
+  const { strings } = useLocalization();
   const { width, height } = useWindowDimensions();
   const scale = Math.max(0.72, Math.min(1, height / 920));
   const heroWidth = Math.min(width - 32, 700);
@@ -1441,20 +2501,20 @@ function OnboardingScreen({ onStartDashboard }) {
         </View>
 
         <View style={styles.titleWrap}>
-          <Text style={[styles.title, { fontSize: titleFontSize, lineHeight: titleLineHeight }]}>{'Zadbaj o swój\ndomowy budżet'}</Text>
+          <Text style={[styles.title, { fontSize: titleFontSize, lineHeight: titleLineHeight }]}>{`${strings.onboarding.titleLine1}\n${strings.onboarding.titleLine2}`}</Text>
           <Text style={[styles.subtitle, { fontSize: subtitleFontSize, lineHeight: subtitleLineHeight }]}>
-            {'Śledź wpływy i wydatki, twórz własne\nkategorie i kontroluj każdy miesiąc\nw jednym miejscu.'}
+            {`${strings.onboarding.subtitleLine1}\n${strings.onboarding.subtitleLine2}\n${strings.onboarding.subtitleLine3}`}
           </Text>
         </View>
 
         <View style={styles.featureRow}>
-          <FeatureCard icon={incomeIcon} title="Wpływy" titleColor="#2ca63c" description={['Rejestruj dochody', 'i miej je pod kontrolą.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
-          <FeatureCard icon={expenseIcon} title="Wydatki" titleColor="#ff6a1a" description={['Kategoryzuj wydatki', 'i nie przekraczaj limitów.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
-          <FeatureCard icon={analyticsIcon} title="Analiza" titleColor="#2468f2" description={['Sprawdzaj raporty', 'i podejmuj lepsze decyzje.'].join('\n')} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+          <FeatureCard icon={incomeIcon} title={strings.onboarding.incomeTitle} titleColor="#2ca63c" description={`${strings.onboarding.incomeDescriptionLine1}\n${strings.onboarding.incomeDescriptionLine2}`} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+          <FeatureCard icon={expenseIcon} title={strings.onboarding.expenseTitle} titleColor="#ff6a1a" description={`${strings.onboarding.expenseDescriptionLine1}\n${strings.onboarding.expenseDescriptionLine2}`} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
+          <FeatureCard icon={analyticsIcon} title={strings.onboarding.analyticsTitle} titleColor="#2468f2" description={`${strings.onboarding.analyticsDescriptionLine1}\n${strings.onboarding.analyticsDescriptionLine2}`} cardHeight={featureCardHeight} iconSize={featureIconSize} titleSize={featureTitleFontSize} descriptionSize={featureDescriptionFontSize} />
         </View>
 
         <Pressable accessibilityRole="button" onPress={onStartDashboard} style={({ pressed }) => [styles.primaryButton, { minHeight: primaryButtonHeight }, pressed && styles.primaryButtonPressed]}>
-          <Text style={[styles.primaryButtonText, { fontSize: primaryButtonFontSize, lineHeight: Math.round(primaryButtonFontSize * 1.15) }]}>Zacznij</Text>
+          <Text style={[styles.primaryButtonText, { fontSize: primaryButtonFontSize, lineHeight: Math.round(primaryButtonFontSize * 1.15) }]}>{strings.onboarding.startButton}</Text>
         </Pressable>
       </View>
 
@@ -1463,36 +2523,91 @@ function OnboardingScreen({ onStartDashboard }) {
   );
 }
 
+function StartupLoadingView() {
+  return (
+    <SafeAreaView style={styles.startupLoadingScreen}>
+      <View style={styles.startupLoadingContent}>
+        <Image source={logoMark} style={styles.startupLoadingLogo} resizeMode="contain" />
+        <ActivityIndicator size="small" color={themeColors.primary} />
+      </View>
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
 function AppContent() {
   const [screen, setScreen] = useState('home');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [dataVersion, setDataVersion] = useState(0);
+  const [editingTransactionId, setEditingTransactionId] = useState(null);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
-  const [hasLoadedOnboardingState, setHasLoadedOnboardingState] = useState(false);
+  const [hasLoadedAppState, setHasLoadedAppState] = useState(false);
+  const [language, setLanguage] = useState(() => detectPreferredLanguage());
+  const [currencyCode, setCurrencyCode] = useState(() => detectPreferredCurrency());
+
+  const localization = useMemo(() => createLocalizationBundle(language, currencyCode), [currencyCode, language]);
+
+  const handleSetLanguage = async (nextLanguage) => {
+    setLanguage(nextLanguage);
+
+    try {
+      await writeLanguageState(nextLanguage);
+    } catch (error) {
+      console.warn('Unable to persist selected language', error);
+    }
+  };
+
+  const handleSetCurrency = async (nextCurrencyCode) => {
+    if (!isSupportedCurrencyCode(nextCurrencyCode)) {
+      return;
+    }
+
+    setCurrencyCode(nextCurrencyCode);
+
+    try {
+      await writeCurrencyState(nextCurrencyCode);
+    } catch (error) {
+      console.warn('Unable to persist selected currency', error);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
-    readOnboardingState()
-      .then((storedValue) => {
+    Promise.all([readOnboardingState(), readLanguageState(), readCurrencyState()])
+      .then(([storedOnboardingState, storedLanguage, storedCurrency]) => {
         if (!isMounted) {
           return;
         }
 
-        if (storedValue === 'true') {
+        const preferredLanguage = storedLanguage ?? detectPreferredLanguage();
+        const preferredCurrency = storedCurrency ?? detectPreferredCurrency();
+        setLanguage(preferredLanguage);
+        setCurrencyCode(preferredCurrency);
+
+        if (!storedLanguage) {
+          void writeLanguageState(preferredLanguage);
+        }
+
+        if (!storedCurrency) {
+          void writeCurrencyState(preferredCurrency);
+        }
+
+        if (storedOnboardingState === 'true') {
           setHasSeenOnboarding(true);
           setScreen('main');
-          setHasLoadedOnboardingState(true);
+          setHasLoadedAppState(true);
           return;
         }
 
         setHasSeenOnboarding(false);
-        setHasLoadedOnboardingState(true);
+        setHasLoadedAppState(true);
       })
       .catch(() => {
         if (isMounted) {
           setHasSeenOnboarding(false);
           setScreen('home');
-          setHasLoadedOnboardingState(true);
+          setHasLoadedAppState(true);
         }
       });
 
@@ -1510,6 +2625,14 @@ function AppContent() {
 
   const handleClearStorage = async () => {
     await clearOnboardingState();
+    await clearLanguageState();
+    await clearCurrencyState();
+    const resetLanguage = detectPreferredLanguage();
+    const resetCurrency = detectPreferredCurrency();
+    setLanguage(resetLanguage);
+    setCurrencyCode(resetCurrency);
+    await writeLanguageState(resetLanguage);
+    await writeCurrencyState(resetCurrency);
     setHasSeenOnboarding(false);
     setScreen('home');
   };
@@ -1524,30 +2647,104 @@ function AppContent() {
     setScreen('onboarding');
   };
 
-  if (!hasLoadedOnboardingState && (screen === 'home' || screen === 'main')) {
+  const handleCreateTransaction = (payload) => {
+    budgetStore.addTransaction(payload);
+    setDataVersion((current) => current + 1);
+    setScreen('main');
+  };
+
+  const handleOpenEditTransaction = (transactionId) => {
+    setEditingTransactionId(transactionId);
+    setScreen('edit-transaction');
+  };
+
+  const handleUpdateTransaction = (payload) => {
+    if (!editingTransactionId) {
+      return;
+    }
+
+    budgetStore.updateTransaction(editingTransactionId, payload);
+    setDataVersion((current) => current + 1);
+    setScreen('main');
+  };
+
+  const handleDeleteTransaction = () => {
+    if (!editingTransactionId) {
+      return;
+    }
+
+    budgetStore.deleteTransaction(editingTransactionId);
+    setDataVersion((current) => current + 1);
+    setScreen('main');
+  };
+
+  const editingTransaction = useMemo(() => {
+    if (!editingTransactionId) {
+      return null;
+    }
+
+    return budgetStore.getTransactions().find((item) => item.id === editingTransactionId) ?? null;
+  }, [dataVersion, editingTransactionId]);
+
+  const content = (() => {
+    if (!hasLoadedAppState && (screen === 'home' || screen === 'main')) {
+      return <StartupLoadingView />;
+    }
+
+    if (screen === 'home') {
+      return <HomeScreen onOpenOnboarding={handleOpenApp} onClearStorage={handleClearStorage} />;
+    }
+
+    if (screen === 'onboarding') {
+      return <OnboardingScreen onStartDashboard={handleStartDashboard} />;
+    }
+
+    if (screen === 'add-transaction') {
+      return <AddTransactionScreen onBack={() => setScreen('main')} onSave={handleCreateTransaction} />;
+    }
+
+    if (screen === 'edit-transaction') {
+      if (!editingTransaction) {
+        return (
+          <MainTabsScreen
+            activeTab={activeTab}
+            onChangeTab={setActiveTab}
+            onBackHome={() => setScreen('home')}
+            onOpenAddTransaction={() => setScreen('add-transaction')}
+            onOpenEditTransaction={handleOpenEditTransaction}
+            dataVersion={dataVersion}
+          />
+        );
+      }
+
+      return (
+        <AddTransactionScreen
+          mode="edit"
+          transaction={editingTransaction}
+          onBack={() => setScreen('main')}
+          onSave={handleUpdateTransaction}
+          onDelete={handleDeleteTransaction}
+        />
+      );
+    }
+
+    return (
+      <MainTabsScreen
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onBackHome={() => setScreen('home')}
+        onOpenAddTransaction={() => setScreen('add-transaction')}
+        onOpenEditTransaction={handleOpenEditTransaction}
+        dataVersion={dataVersion}
+      />
+    );
+  })();
+
+  if (!content) {
     return null;
   }
 
-  if (screen === 'home') {
-    return <HomeScreen onOpenOnboarding={handleOpenApp} onClearStorage={handleClearStorage} />;
-  }
-
-  if (screen === 'onboarding') {
-    return <OnboardingScreen onStartDashboard={handleStartDashboard} />;
-  }
-
-  if (screen === 'add-transaction') {
-    return <AddTransactionScreen onBack={() => setScreen('main')} onSave={() => setScreen('main')} />;
-  }
-
-  return (
-    <MainTabsScreen
-      activeTab={activeTab}
-      onChangeTab={setActiveTab}
-      onBackHome={() => setScreen('home')}
-      onOpenAddTransaction={() => setScreen('add-transaction')}
-    />
-  );
+  return <LocalizationContext.Provider value={{ ...localization, setLanguage: handleSetLanguage, setCurrency: handleSetCurrency }}>{content}</LocalizationContext.Provider>;
 }
 
 export default function App() {
@@ -1559,6 +2756,20 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  startupLoadingScreen: {
+    flex: 1,
+    backgroundColor: themeColors.background,
+  },
+  startupLoadingContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  startupLoadingLogo: {
+    width: 80,
+    height: 80,
+  },
   homeScreen: {
     flex: 1,
     backgroundColor: themeColors.background,
@@ -2183,11 +3394,9 @@ const styles = StyleSheet.create({
     minHeight: 64,
     gap: 4,
   },
-  tabsIcon: {
-    fontSize: 20,
-    lineHeight: 22,
-    color: '#6e809f',
-    fontFamily: fontFamilies.sans,
+  tabsIconImage: {
+    width: 36,
+    height: 36,
   },
   tabsLabel: {
     fontSize: 13,
@@ -2210,15 +3419,761 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   tabsActiveCircleIcon: {
-    color: '#ffffff',
-    fontSize: 21,
-    lineHeight: 24,
-    fontWeight: '700',
-    fontFamily: fontFamilies.sans,
+    width: 36,
+    height: 36,
   },
   tabsActiveSpacer: {
     height: 50,
     width: 50,
+  },
+  operationsScreen: {
+    flex: 1,
+    backgroundColor: '#f4f8ff',
+  },
+  operationsGlowLeft: {
+    position: 'absolute',
+    left: -88,
+    top: -104,
+    width: 284,
+    height: 284,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+  },
+  operationsGlowRight: {
+    position: 'absolute',
+    right: -96,
+    top: 108,
+    width: 248,
+    height: 248,
+    borderRadius: 999,
+    backgroundColor: 'rgba(219,232,255,0.72)',
+  },
+  operationsScroll: {
+    flex: 1,
+  },
+  operationsTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  operationsMonthSelectorWrap: {
+    position: 'relative',
+    flex: 1,
+    paddingRight: 10,
+  },
+  operationsMonthSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+  },
+  operationsMonthText: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: '#1c284f',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsMonthChevron: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#475569',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  operationsMonthDropdown: {
+    position: 'absolute',
+    top: 36,
+    left: 0,
+    minWidth: 196,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surface,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+  },
+  operationsMonthOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.7)',
+  },
+  operationsMonthOptionActive: {
+    backgroundColor: themeColors.infoSoft,
+  },
+  operationsMonthOptionText: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsMonthOptionTextActive: {
+    color: themeColors.info,
+    fontWeight: '700',
+  },
+  operationsActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  operationsActionButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: themeColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  operationsActionIcon: {
+    fontSize: 22,
+    lineHeight: 24,
+    marginTop: 4,
+    color: '#1c284f',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '700',
+  },
+  operationsActionLabel: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#334155',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTitle: {
+    marginTop: 18,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: '#1a244a',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSearchBox: {
+    marginTop: 14,
+    height: 66,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: themeColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  operationsSearchIcon: {
+    width: 24,
+    height: 24,
+  },
+  operationsSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    color: themeColors.textPrimary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTypeRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 14,
+  },
+  operationsTypeChip: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    backgroundColor: themeColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  operationsTypeChipActive: {
+    borderColor: '#4ade80',
+    backgroundColor: '#f5fff8',
+  },
+  operationsTypeChipText: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    color: '#1f2d4f',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsTypeChipTextActive: {
+    color: '#16a34a',
+  },
+  operationsSummaryCard: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: themeColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  operationsSummaryHeader: {
+    gap: 14,
+  },
+  operationsSummaryMonthBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  operationsSummaryIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: themeColors.infoSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationsSummaryIcon: {
+    width: 30,
+    height: 30,
+  },
+  operationsSummaryMonthTextWrap: {
+    flex: 1,
+  },
+  operationsSummaryCount: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: '#1b2445',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSummaryMonth: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsSummaryMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+  },
+  operationsSummaryMetricDivider: {
+    width: 1,
+    marginVertical: 4,
+    backgroundColor: 'rgba(226,232,240,0.9)',
+  },
+  operationsMetricItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  operationsMetricLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsMetricValue: {
+    marginTop: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsListCard: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: themeColors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  operationsRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.85)',
+    paddingVertical: 14,
+  },
+  operationsRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 10,
+  },
+  operationsRowIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationsRowIcon: {
+    width: '170%',
+    height: '170%',
+  },
+  operationsRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  operationsRowTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    color: '#151f43',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsRowSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsRowAmount: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyListState: {
+    paddingVertical: 22,
+    alignItems: 'center',
+  },
+  operationsEmptyListTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: '#1a244a',
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsEmptyListText: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+    textAlign: 'center',
+  },
+  operationsAddButton: {
+    marginTop: 22,
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: themeColors.income,
+    paddingHorizontal: 34,
+    paddingVertical: 14,
+  },
+  operationsAddButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  operationsAddIcon: {
+    width: 20,
+    height: 20,
+  },
+  operationsAddButtonText: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  operationsModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.28)',
+  },
+  operationsModalCard: {
+    backgroundColor: themeColors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+  },
+  operationsModalTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    color: '#1b2445',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    color: themeColors.textSecondary,
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalChoices: {
+    marginTop: 14,
+    gap: 10,
+  },
+  operationsChoiceRow: {
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: themeColors.surfaceAlt,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  operationsChoiceRowActive: {
+    borderColor: themeColors.primary,
+    backgroundColor: themeColors.primarySoft,
+  },
+  operationsChoiceRowText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: '#1f2d4f',
+    fontFamily: fontFamilies.sans,
+    fontWeight: '600',
+  },
+  operationsChoiceRowTextActive: {
+    color: themeColors.primary,
+    fontWeight: '700',
+  },
+  operationsChoiceRowCheck: {
+    fontSize: 18,
+    lineHeight: 20,
+    color: themeColors.primary,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalResetButton: {
+    marginTop: 16,
+    height: 52,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.surface,
+  },
+  operationsModalResetButtonText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: themeColors.textPrimary,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsModalCloseButton: {
+    marginTop: 12,
+    height: 52,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: themeColors.primary,
+  },
+  operationsModalCloseButtonText: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: '#ffffff',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f4f8ff',
+    paddingHorizontal: 20,
+  },
+  operationsEmptyGlowTop: {
+    position: 'absolute',
+    top: -136,
+    left: -120,
+    width: 300,
+    height: 300,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  operationsEmptyCard: {
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    gap: 8,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    elevation: 4,
+  },
+  operationsEmptyTitle: {
+    color: '#1b2445',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  operationsEmptyText: {
+    color: themeColors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: fontFamilies.sans,
+  },
+  moreScreen: {
+    flex: 1,
+    backgroundColor: '#f4f8ff',
+  },
+  moreGlowTop: {
+    position: 'absolute',
+    top: -120,
+    left: -96,
+    width: 300,
+    height: 300,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+  },
+  moreGlowBottom: {
+    position: 'absolute',
+    right: -110,
+    top: 360,
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: 'rgba(226,236,255,0.74)',
+  },
+  moreScroll: {
+    flex: 1,
+  },
+  moreScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 64,
+    paddingBottom: 26,
+    gap: 14,
+  },
+  moreHeader: {
+    marginTop: 0,
+    gap: 8,
+  },
+  moreTitle: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+    color: '#1a2652',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.6,
+  },
+  moreSubtitle: {
+    color: '#6979a0',
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: fontFamilies.sans,
+    paddingRight: 14,
+  },
+  moreSectionCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.9)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 2,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.07,
+    shadowRadius: 24,
+    elevation: 3,
+  },
+  moreSectionTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#7281a3',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.4,
+    marginBottom: 2,
+  },
+  moreRow: {
+    minHeight: 90,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreRowPressed: {
+    opacity: 0.84,
+  },
+  moreRowWithDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.9)',
+  },
+  moreRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flex: 1,
+    paddingRight: 8,
+  },
+  moreRowIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  moreRowIconImage: {
+    width: '165%',
+    height: '165%',
+  },
+  moreRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  moreRowTitle: {
+    color: '#1a244a',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+    letterSpacing: -0.35,
+  },
+  moreRowTitleDestructive: {
+    color: '#EF4444',
+  },
+  moreRowSubtitle: {
+    marginTop: 3,
+    color: '#6a7798',
+    fontSize: 14,
+    lineHeight: 19,
+    fontFamily: fontFamilies.sans,
+  },
+  moreRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 8,
+  },
+  moreRowValue: {
+    color: '#7d86a6',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '500',
+    fontFamily: fontFamilies.sans,
+  },
+  moreRowChevron: {
+    color: '#7b88ab',
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: '400',
+    fontFamily: fontFamilies.sans,
+  },
+  moreRowChevronDestructive: {
+    color: '#EF4444',
+  },
+  moreModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  moreModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.28)',
+  },
+  moreModalCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(209,220,238,0.95)',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    gap: 12,
+  },
+  moreModalTitle: {
+    color: '#1b2445',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  moreModalSubtitle: {
+    color: '#64748b',
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: fontFamilies.sans,
+  },
+  moreModalOptionList: {
+    gap: 10,
+  },
+  moreModalOptionRow: {
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreModalOptionRowActive: {
+    borderColor: themeColors.primary,
+    backgroundColor: themeColors.primarySoft,
+  },
+  moreModalOptionText: {
+    color: '#1f2d4f',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '600',
+    fontFamily: fontFamilies.sans,
+  },
+  moreModalOptionTextActive: {
+    color: themeColors.primary,
+    fontWeight: '700',
+  },
+  moreModalOptionCheck: {
+    color: themeColors.primary,
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  moreModalCloseButton: {
+    marginTop: 2,
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreModalCloseButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
   },
   placeholderScreen: {
     flex: 1,
@@ -2459,12 +4414,34 @@ const styles = StyleSheet.create({
     paddingBottom: 56,
     gap: 14,
   },
+  addTxHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   addTxBackButton: {
     width: 42,
     height: 42,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  addTxDeleteIconButton: {
+    minHeight: 42,
+    borderRadius: radii.panel,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxDeleteIconButtonText: {
+    color: themeColors.expense,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
   },
   addTxBackButtonImage: {
     width: 72,
@@ -2519,6 +4496,53 @@ const styles = StyleSheet.create({
   },
   addTxTypeTextExpense: {
     color: themeColors.expense,
+  },
+  addTxEditTypePillWrap: {
+    marginTop: 2,
+    flexDirection: 'row',
+  },
+  addTxEditTypePill: {
+    minHeight: 46,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addTxEditTypePillIncome: {
+    borderColor: '#b6eacc',
+    backgroundColor: '#ecf9f2',
+  },
+  addTxEditTypePillExpense: {
+    borderColor: '#ffd2d2',
+    backgroundColor: '#fff3f3',
+  },
+  addTxEditTypePillArrow: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '600',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxEditTypePillArrowIncome: {
+    color: '#16A34A',
+  },
+  addTxEditTypePillArrowExpense: {
+    color: '#DC2626',
+    transform: [{ rotate: '90deg' }],
+  },
+  addTxEditTypePillText: {
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
+    fontWeight: '600',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxEditTypePillTextIncome: {
+    color: '#16A34A',
+  },
+  addTxEditTypePillTextExpense: {
+    color: '#DC2626',
   },
   addTxCard: {
     borderRadius: radii.card,
@@ -2739,6 +4763,92 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: fontFamilies.sans,
     letterSpacing: -0.4,
+  },
+  addTxDeleteButton: {
+    marginTop: -2,
+    borderRadius: radii.pill,
+    minHeight: 66,
+    borderWidth: 1.5,
+    borderColor: '#ef4444',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxDeleteButtonText: {
+    color: '#ef4444',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxConfirmOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  addTxConfirmBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.38)',
+  },
+  addTxConfirmCard: {
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+  },
+  addTxConfirmTitle: {
+    fontSize: 21,
+    lineHeight: 27,
+    color: '#172554',
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxConfirmText: {
+    marginTop: 6,
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#536387',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxConfirmActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  addTxConfirmCancelButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: radii.panel,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxConfirmCancelButtonText: {
+    color: '#475569',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    fontFamily: fontFamilies.sans,
+  },
+  addTxConfirmDeleteButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: radii.panel,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTxConfirmDeleteButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    fontFamily: fontFamilies.sans,
   },
   calendarModalOverlay: {
     flex: 1,
