@@ -808,11 +808,18 @@ function createFormatters(language: LanguageCode, currencyCode: CurrencyCode) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+  const operationWeekdayDisplayFormatter = new Intl.DateTimeFormat(locale, {
     weekday: "short",
   });
   const operationMonthDisplayFormatter = new Intl.DateTimeFormat(locale, {
     month: "long",
     year: "numeric",
+  });
+  const amountInputFormatter = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: false,
   });
 
   return {
@@ -826,6 +833,9 @@ function createFormatters(language: LanguageCode, currencyCode: CurrencyCode) {
       const sign = amountMinor > 0 ? "+" : amountMinor < 0 ? "-" : "";
       return `${sign}${currencyFormatter.format(Math.abs(amountMinor) / 100)}`;
     },
+    formatAmountInput(amountMinor: number): string {
+      return amountInputFormatter.format(amountMinor / 100);
+    },
     formatMonthLabel(yearMonth: string): string {
       const [yearPart, monthPart] = yearMonth.split("-").map((value) => Number(value));
       const formatted = monthFormatter.format(new Date(yearPart, monthPart - 1, 1));
@@ -836,7 +846,7 @@ function createFormatters(language: LanguageCode, currencyCode: CurrencyCode) {
       return dateFormatter.format(new Date(yearPart, monthPart - 1, dayPart));
     },
     formatOperationDateWithWeekday(date: Date): string {
-      return `${operationDateDisplayFormatter.format(date)} (${operationDateDisplayFormatter.format(date).split(" ").pop() ?? ""})`;
+      return `${operationDateDisplayFormatter.format(date)} (${operationWeekdayDisplayFormatter.format(date)})`;
     },
     formatOperationMonthFromDate(date: Date): string {
       return capitalize(operationMonthDisplayFormatter.format(date));
@@ -865,6 +875,10 @@ const errorMessages: Record<LanguageCode, Record<AppErrorCode, string>> = {
   en: translations.en.errors,
 };
 
+function isKnownAppErrorCode(value: string): value is AppErrorCode {
+  return value in errorMessages.en;
+}
+
 export function createLocalizationBundle(language: LanguageCode, currencyCode: CurrencyCode) {
   return {
     language,
@@ -881,8 +895,8 @@ export function translateAppErrorMessage(language: LanguageCode, error: unknown)
   }
 
   if (error instanceof Error) {
-    const candidate = error.message as AppErrorCode;
-    if (candidate in errorMessages[language]) {
+    const candidate = error.message;
+    if (isKnownAppErrorCode(candidate)) {
       return errorMessages[language][candidate];
     }
 

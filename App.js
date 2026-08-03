@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File } from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { budgetStore } from './store';
@@ -1553,6 +1553,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
   const {
     formatOperationDateWithWeekday,
     formatOperationMonthFromDate,
+    formatAmountInput,
     calendarWeekdayLabels,
     normalizeSearchValue,
     currencySymbol,
@@ -1564,7 +1565,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
   const [operationDate, setOperationDate] = useState(() => (transaction ? parseDateOnlyToLocalDate(transaction.operationDate) : new Date()));
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [calendarViewMonth, setCalendarViewMonth] = useState(() => new Date(operationDate.getFullYear(), operationDate.getMonth(), 1));
-  const [amountInput, setAmountInput] = useState(() => (transaction ? (transaction.amountMinor / 100).toFixed(2).replace('.', ',') : '0,00'));
+  const [amountInput, setAmountInput] = useState(() => formatAmountInput(transaction?.amountMinor ?? 0));
   const [descriptionInput, setDescriptionInput] = useState(() => transaction?.description ?? '');
   const [selectedCategoryId, setSelectedCategoryId] = useState(() => transaction?.categoryId ?? budgetStore.getCategories('income')[0]?.id ?? null);
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
@@ -1604,10 +1605,10 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
     setType(transaction.type);
     setOperationDate(parseDateOnlyToLocalDate(transaction.operationDate));
     setCalendarViewMonth(new Date(parseDateOnlyToLocalDate(transaction.operationDate).getFullYear(), parseDateOnlyToLocalDate(transaction.operationDate).getMonth(), 1));
-    setAmountInput((transaction.amountMinor / 100).toFixed(2).replace('.', ','));
+    setAmountInput(formatAmountInput(transaction.amountMinor));
     setDescriptionInput(transaction.description ?? '');
     setSelectedCategoryId(transaction.categoryId);
-  }, [isEditMode, transaction]);
+  }, [formatAmountInput, isEditMode, transaction]);
 
   useEffect(() => {
     if (categoriesForType.length === 0) {
@@ -2522,6 +2523,18 @@ function OnboardingScreen({ onStartDashboard }) {
   );
 }
 
+function StartupLoadingView() {
+  return (
+    <SafeAreaView style={styles.startupLoadingScreen}>
+      <View style={styles.startupLoadingContent}>
+        <Image source={logoMark} style={styles.startupLoadingLogo} resizeMode="contain" />
+        <ActivityIndicator size="small" color={themeColors.primary} />
+      </View>
+      <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
 function AppContent() {
   const [screen, setScreen] = useState('home');
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -2675,7 +2688,7 @@ function AppContent() {
 
   const content = (() => {
     if (!hasLoadedAppState && (screen === 'home' || screen === 'main')) {
-      return null;
+      return <StartupLoadingView />;
     }
 
     if (screen === 'home') {
@@ -2743,6 +2756,20 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  startupLoadingScreen: {
+    flex: 1,
+    backgroundColor: themeColors.background,
+  },
+  startupLoadingContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  startupLoadingLogo: {
+    width: 80,
+    height: 80,
+  },
   homeScreen: {
     flex: 1,
     backgroundColor: themeColors.background,
