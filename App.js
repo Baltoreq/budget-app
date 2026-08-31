@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File } from 'expo-file-system';
-import { StatusBar } from 'expo-status-bar';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { budgetStore } from './store';
+import { hydrateBudgetStore, persistBudgetStore } from './store/sqliteBudgetPersistence';
 import { buildMonthAnalysis } from './domain/calculations/analysis';
 import { createLocalizationBundle, detectPreferredCurrency, detectPreferredLanguage, supportedCurrencies, translateAppErrorMessage } from './lib/i18n';
-import { fontFamilies, radii, themeColors } from './theme';
+import { darkThemeColors, fontFamilies, radii, themeColors } from './theme';
 
 const onboardingHero = require('./assets/onboarding-bg.png');
 const logoMark = require('./assets/logo.png');
@@ -55,8 +56,12 @@ const LANGUAGE_STORAGE_KEY = '@homebudget/language-code';
 const LANGUAGE_FILE_NAME = 'homebudget-language-state.json';
 const CURRENCY_STORAGE_KEY = '@homebudget/currency-code';
 const CURRENCY_FILE_NAME = 'homebudget-currency-state.json';
+const THEME_STORAGE_KEY = '@homebudget/theme-mode';
 
 const LocalizationContext = createContext(null);
+const ThemeContext = createContext(null);
+
+let activeThemeMode = 'light';
 
 function useLocalization() {
   const value = useContext(LocalizationContext);
@@ -66,6 +71,22 @@ function useLocalization() {
   }
 
   return value;
+}
+
+function useTheme() {
+  const value = useContext(ThemeContext);
+
+  if (!value) {
+    throw new Error('ThemeContext is missing.');
+  }
+
+  return value;
+}
+
+function StatusBar() {
+  const { themeMode } = useTheme();
+
+  return <ExpoStatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />;
 }
 
 function isSupportedCurrencyCode(value) {
@@ -351,6 +372,32 @@ async function clearCurrencyState() {
   }
 }
 
+async function readThemeState() {
+  try {
+    const savedValue = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+    return savedValue === 'dark' || savedValue === 'light' ? savedValue : null;
+  } catch (error) {
+    console.warn('Unable to read theme state from AsyncStorage', error);
+    return null;
+  }
+}
+
+async function writeThemeState(themeMode) {
+  try {
+    await AsyncStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  } catch (error) {
+    console.warn('Unable to persist selected theme', error);
+  }
+}
+
+async function clearThemeState() {
+  try {
+    await AsyncStorage.removeItem(THEME_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear theme state from AsyncStorage', error);
+  }
+}
+
 const monthFormatter = new Intl.DateTimeFormat('pl-PL', {
   month: 'long',
   year: 'numeric',
@@ -459,6 +506,11 @@ function resolveCategoryIconFromKey(iconKey) {
   }
 
   const normalized = iconKey.trim().toLowerCase();
+  const customIcon = categoryIconOptions.find((option) => option.key === normalized);
+
+  if (customIcon) {
+    return customIcon.source;
+  }
 
   if (normalized === 'briefcase' || normalized === 'wallet') {
     return walletIcon;
@@ -474,6 +526,30 @@ function resolveCategoryIconFromKey(iconKey) {
 
   if (normalized === 'home' || normalized === 'money-bag') {
     return moneyBagIcon;
+  }
+
+  if (normalized === 'transport') {
+    return transportCategoryIcon;
+  }
+
+  if (normalized === 'rent') {
+    return rentCategoryIcon;
+  }
+
+  if (normalized === 'entertainment') {
+    return entertainmentCategoryIcon;
+  }
+
+  if (normalized === 'calendar') {
+    return calendarIcon;
+  }
+
+  if (normalized === 'safe') {
+    return safeIcon;
+  }
+
+  if (normalized === 'others') {
+    return othersCategoryIcon;
   }
 
   return null;
@@ -814,20 +890,20 @@ function AnalysisDetailModal({ detail, onClose, strings }) {
   );
 }
 
-function resolveInsightVisuals(tone, strings) {
+function resolveInsightVisuals(tone, strings, colors) {
   if (tone === 'warning') {
     return {
       iconSource: warningIcon,
-      iconBackgroundColor: '#FFF1F2',
-      iconTintColor: '#FF4D5E',
+      iconBackgroundColor: colors.expenseSoft,
+      iconTintColor: colors.expense,
       toneLabel: strings.analytics.tags.warning,
       toneBackgroundStyle: {
-        backgroundColor: '#FFF1F2',
+        backgroundColor: colors.expenseSoft,
       },
-      toneTextStyle: { color: '#FF4D5E' },
+      toneTextStyle: { color: colors.expense },
       cardStyle: {
-        backgroundColor: '#FFF8F8',
-        borderColor: '#FFE1E6',
+        backgroundColor: colors.surface,
+        borderColor: colors.expense,
       },
     };
   }
@@ -835,32 +911,32 @@ function resolveInsightVisuals(tone, strings) {
   if (tone === 'positive') {
     return {
       iconSource: safeIcon,
-      iconBackgroundColor: '#EAFBF1',
-      iconTintColor: '#22C76A',
+      iconBackgroundColor: colors.incomeSoft,
+      iconTintColor: colors.income,
       toneLabel: strings.analytics.tags.positive,
       toneBackgroundStyle: {
-        backgroundColor: '#EAFBF1',
+        backgroundColor: colors.incomeSoft,
       },
-      toneTextStyle: { color: '#22C76A' },
+      toneTextStyle: { color: colors.income },
       cardStyle: {
-        backgroundColor: '#F5FCF7',
-        borderColor: '#DDF5E5',
+        backgroundColor: colors.surface,
+        borderColor: colors.income,
       },
     };
   }
 
   return {
     iconSource: helpMessageIcon,
-    iconBackgroundColor: '#EEF5FF',
-    iconTintColor: '#3B82F6',
+    iconBackgroundColor: colors.infoSoft,
+    iconTintColor: colors.info,
     toneLabel: strings.analytics.tags.neutral,
     toneBackgroundStyle: {
-      backgroundColor: '#EEF5FF',
+      backgroundColor: colors.infoSoft,
     },
-    toneTextStyle: { color: '#3B82F6' },
+    toneTextStyle: { color: colors.info },
     cardStyle: {
-      backgroundColor: '#F7FAFF',
-      borderColor: '#DFEBFF',
+      backgroundColor: colors.surface,
+      borderColor: colors.info,
     },
   };
 }
@@ -1064,6 +1140,7 @@ function OperationChoiceRow({ label, active, onPress }) {
 
 function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVersion }) {
   const { strings, formatters } = useLocalization();
+  const { colors } = useTheme();
   const {
     formatMinorCurrency,
     formatSignedMinorCurrency,
@@ -1282,14 +1359,14 @@ function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVer
             </View>
 
             <View style={styles.operationsSummaryMetricsRow}>
-                  <OperationsMetric label={strings.operations.incomeMetric} value={formatMinorCurrency(selectedBudget.totalIncomeMinor)} valueColor={themeColors.income} />
+                  <OperationsMetric label={strings.operations.incomeMetric} value={formatMinorCurrency(selectedBudget.totalIncomeMinor)} valueColor={colors.income} />
               <View style={styles.operationsSummaryMetricDivider} />
-                  <OperationsMetric label={strings.operations.expenseMetric} value={formatMinorCurrency(selectedBudget.totalExpenseMinor)} valueColor={themeColors.expense} />
+                  <OperationsMetric label={strings.operations.expenseMetric} value={formatMinorCurrency(selectedBudget.totalExpenseMinor)} valueColor={colors.expense} />
               <View style={styles.operationsSummaryMetricDivider} />
               <OperationsMetric
                     label={strings.operations.balanceMetric}
                 value={formatSignedMinorCurrency(selectedBudget.monthlyResultMinor)}
-                valueColor={selectedBudget.monthlyResultMinor >= 0 ? themeColors.income : themeColors.expense}
+                valueColor={selectedBudget.monthlyResultMinor >= 0 ? colors.income : colors.expense}
               />
             </View>
           </View>
@@ -1305,7 +1382,7 @@ function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVer
             monthTransactions.map(({ transaction, category }) => {
               const isIncome = transaction.type === 'income';
               const rowIcon = resolveOperationRowIcon(transaction, category);
-              const rowColor = category?.color ?? (isIncome ? themeColors.income : themeColors.expense);
+              const rowColor = category?.color ?? (isIncome ? colors.income : colors.expense);
 
               return (
                 <Pressable
@@ -1315,7 +1392,7 @@ function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVer
                   onPress={() => onOpenEditTransaction(transaction.id)}
                 >
                   <View style={styles.operationsRowLeft}>
-                    <View style={[styles.operationsRowIconWrap, { backgroundColor: isIncome ? themeColors.incomeSoft : categoryPillBackground(rowColor) }]}>
+                    <View style={[styles.operationsRowIconWrap, { backgroundColor: isIncome ? colors.incomeSoft : categoryPillBackground(rowColor) }]}>
                       <Image source={rowIcon} resizeMode="contain" style={styles.operationsRowIcon} />
                     </View>
 
@@ -1329,7 +1406,7 @@ function OperationsScreen({ onOpenAddTransaction, onOpenEditTransaction, dataVer
                     </View>
                   </View>
 
-                  <Text style={[styles.operationsRowAmount, { color: isIncome ? themeColors.income : themeColors.expense }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                  <Text style={[styles.operationsRowAmount, { color: isIncome ? colors.income : colors.expense }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                     {formatSignedMinorCurrency(isIncome ? transaction.amountMinor : -transaction.amountMinor)}
                   </Text>
                 </Pressable>
@@ -1922,6 +1999,7 @@ function DashboardScreen({ onBackHome, onOpenAddTransaction }) {
 
 function AnalysisScreen({ dataVersion }) {
   const { strings, formatters } = useLocalization();
+  const { colors } = useTheme();
   const { formatMinorCurrency, formatSignedMinorCurrency, formatMonthLabel, formatOperationDate } = formatters;
   const { width } = useWindowDimensions();
   const isCompactScreen = width < 430;
@@ -2222,7 +2300,7 @@ function AnalysisScreen({ dataVersion }) {
 
         <View style={styles.analysisInsightsList}>
           {visibleInsights.map((insight) => {
-            const visuals = resolveInsightVisuals(insight.tone, strings);
+            const visuals = resolveInsightVisuals(insight.tone, strings, colors);
             const presentation = buildInsightPresentation(insight, strings, formatters);
 
             return (
@@ -2391,8 +2469,9 @@ function AnalysisScreen({ dataVersion }) {
   );
 }
 
-function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = null, onDelete }) {
+function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = null, onDelete, onManageCategories }) {
   const { strings, formatters, language } = useLocalization();
+  const { colors } = useTheme();
   const {
     formatOperationDateWithWeekday,
     formatOperationMonthFromDate,
@@ -2484,7 +2563,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
     setIsCategoryPickerOpen(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (amountMinor === null || amountMinor <= 0) {
       setSaveError(strings.validation.amountGreaterThanZero);
       return;
@@ -2506,11 +2585,11 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
       };
 
       if (isEditMode) {
-        onSave(payload);
+        await onSave(payload);
         return;
       }
 
-      onSave({
+      await onSave({
         type,
         ...payload,
       });
@@ -2519,7 +2598,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
     }
   };
 
-  const categoryAccentColor = selectedCategory?.color ?? (isIncome ? themeColors.income : themeColors.expense);
+  const categoryAccentColor = selectedCategory?.color ?? (isIncome ? colors.income : colors.expense);
   const selectedCategoryIcon = selectedCategory
     ? resolveCategoryIconFromKey(selectedCategory.icon) ?? resolveCategoryIcon(selectedCategory.name)
     : null;
@@ -2610,7 +2689,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
                 }}
                 keyboardType="decimal-pad"
                 placeholder={strings.addTransaction.amountPlaceholder}
-                placeholderTextColor={themeColors.textMuted}
+                placeholderTextColor={colors.textMuted}
                 accessibilityLabel={strings.addTransaction.amountLabel}
               />
               <Text style={styles.addTxAmountCurrency}>{currencySymbol}</Text>
@@ -2654,7 +2733,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
               <TextInput
                 style={styles.addTxDescriptionInput}
                 placeholder={strings.addTransaction.descriptionPlaceholder}
-                placeholderTextColor={themeColors.textMuted}
+                placeholderTextColor={colors.textMuted}
                 multiline
                 value={descriptionInput}
                 onChangeText={setDescriptionInput}
@@ -2819,7 +2898,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
               ) : (
                 visibleCategories.map((category) => {
                   const isSelected = category.id === categoryDraftId;
-                  const color = category.color ?? (isIncome ? themeColors.income : themeColors.expense);
+                  const color = category.color ?? (isIncome ? colors.income : colors.expense);
                   const categoryIcon = resolveCategoryIconFromKey(category.icon) ?? resolveCategoryIcon(category.name);
 
                   return (
@@ -2858,7 +2937,7 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
 
             {!isCategorySearchFocused ? (
               <>
-                <Pressable accessibilityRole="button" style={styles.selectCategoryManageLink}>
+                <Pressable accessibilityRole="button" style={styles.selectCategoryManageLink} onPress={onManageCategories}>
                   <Text style={styles.selectCategoryManageLinkText}>{strings.addTransaction.selectCategoryManageLink}</Text>
                 </Pressable>
 
@@ -2894,9 +2973,13 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
               <Pressable
                 accessibilityRole="button"
                 style={styles.addTxConfirmDeleteButton}
-                onPress={() => {
-                  setIsDeleteConfirmOpen(false);
-                  onDelete?.();
+                onPress={async () => {
+                  try {
+                    await onDelete?.();
+                    setIsDeleteConfirmOpen(false);
+                  } catch (error) {
+                    setSaveError(translateAppErrorMessage(language, error));
+                  }
                 }}
               >
                 <Text style={styles.addTxConfirmDeleteButtonText}>{strings.addTransaction.deleteConfirmationConfirm}</Text>
@@ -2907,6 +2990,383 @@ function AddTransactionScreen({ onBack, onSave, mode = 'create', transaction = n
       </Modal>
 
       <StatusBar style="dark" />
+    </SafeAreaView>
+  );
+}
+
+const categoryColorOptions = ['#2563EB', '#16A34A', '#EAB308', '#DC2626', '#9333EA', '#0891B2'];
+const categoryIconOptions = [
+  { key: 'shopping-bag', source: shoppingBagIcon },
+  { key: 'transport', source: transportCategoryIcon },
+  { key: 'rent', source: rentCategoryIcon },
+  { key: 'entertainment', source: entertainmentCategoryIcon },
+  { key: 'wallet', source: walletIcon },
+  { key: 'transfer', source: transferIcon },
+  { key: 'money-bag', source: moneyBagIcon },
+  { key: 'calendar', source: calendarIcon },
+  { key: 'safe', source: safeIcon },
+  { key: 'others', source: othersCategoryIcon },
+  { key: 'income', source: require('./assets/income.png') },
+  { key: 'outcome', source: require('./assets/outcome.png') },
+  { key: 'money-increase', source: require('./assets/money-increase.png') },
+  { key: 'money-plant', source: require('./assets/money-plant.png') },
+  { key: 'piggy-bank', source: require('./assets/piggy-bank.png') },
+  { key: 'home-budget', source: require('./assets/home_budget.png') },
+  { key: 'growth-chart', source: require('./assets/growth-chart.png') },
+  { key: 'line-chart', source: require('./assets/line-chart.png') },
+  { key: 'pie-chart', source: require('./assets/pie-chart.png') },
+  { key: 'check-list', source: require('./assets/check-list.png') },
+  { key: 'warning', source: require('./assets/warning.png') },
+  { key: 'error', source: require('./assets/error.png') },
+  { key: 'cloud-offline', source: require('./assets/cloud-offline.png') },
+  { key: 'lock', source: require('./assets/lock.png') },
+  { key: 'locked', source: require('./assets/locked.png') },
+  { key: 'settings', source: require('./assets/settings.png') },
+  { key: 'categories', source: require('./assets/categories.png') },
+  { key: 'currency', source: require('./assets/currency.png') },
+  { key: 'style', source: require('./assets/style.png') },
+  { key: 'help-message', source: require('./assets/help-message.png') },
+  { key: 'empty-box', source: require('./assets/empty-box.png') },
+  { key: 'device-error', source: require('./assets/device-error.png') },
+  { key: 'remove', source: require('./assets/remove.png') },
+  { key: 'edit', source: require('./assets/edit.png') },
+  { key: 'delete', source: require('./assets/delete.png') },
+];
+
+function CategoryManagementScreen({ onBack, onCategoriesChanged }) {
+  const { strings, language, formatters } = useLocalization();
+  const { colors } = useTheme();
+  const [type, setType] = useState('expense');
+  const [searchInput, setSearchInput] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryColor, setCategoryColor] = useState(categoryColorOptions[0]);
+  const [categoryIconKey, setCategoryIconKey] = useState(null);
+  const [customColorInput, setCustomColorInput] = useState(categoryColorOptions[0]);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const [areAllIconsVisible, setAreAllIconsVisible] = useState(false);
+  const [categoryError, setCategoryError] = useState('');
+  const [categoryPendingDelete, setCategoryPendingDelete] = useState(null);
+  const [isCategoryFormOpen, setIsCategoryFormOpen] = useState(false);
+  const categories = budgetStore.getCategories(type);
+  const normalizedQuery = formatters.normalizeSearchValue(searchInput);
+  const visibleCategories = normalizedQuery
+    ? categories.filter((category) => formatters.normalizeSearchValue(category.name).includes(normalizedQuery))
+    : categories;
+  const categoryUsage = new Set(budgetStore.getTransactions().map((transaction) => transaction.categoryId));
+  const usedCategoryCount = categories.filter((category) => categoryUsage.has(category.id)).length;
+  const unusedCategoryCount = categories.length - usedCategoryCount;
+
+  const openCategoryForm = (category = null) => {
+    setEditingCategory(category);
+    setCategoryName(category?.name ?? '');
+    setCategoryColor(category?.color ?? (type === 'income' ? colors.income : colors.expense));
+    setCustomColorInput(category?.color ?? (type === 'income' ? colors.income : colors.expense));
+    setCategoryIconKey(category?.icon ?? null);
+    setAreAllIconsVisible(false);
+    setCategoryError('');
+    setIsCategoryFormOpen(true);
+  };
+
+  const saveCategory = async () => {
+    try {
+      if (editingCategory) {
+        budgetStore.updateCategory(editingCategory.id, { name: categoryName, color: categoryColor, icon: categoryIconKey });
+      } else {
+        budgetStore.addCategory({ name: categoryName, type, color: categoryColor, icon: categoryIconKey });
+      }
+
+      setEditingCategory(null);
+      setIsCategoryFormOpen(false);
+      await onCategoriesChanged();
+    } catch (error) {
+      setCategoryError(translateAppErrorMessage(language, error));
+    }
+  };
+
+  const deleteCategory = async () => {
+    if (!categoryPendingDelete) {
+      return;
+    }
+
+    try {
+      budgetStore.deleteCategory(categoryPendingDelete.id);
+      setCategoryPendingDelete(null);
+      await onCategoriesChanged();
+    } catch (error) {
+      setCategoryPendingDelete(null);
+      Alert.alert(strings.categories.deleteFailedTitle, translateAppErrorMessage(language, error));
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.categoriesScreen}>
+      <ScrollView contentContainerStyle={[styles.categoriesContent, { paddingTop: (RNStatusBar.currentHeight ?? 0) + 28 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.categoriesHeader}>
+          <Pressable accessibilityRole="button" accessibilityLabel={strings.common.back} style={styles.categoriesBackButton} onPress={onBack}>
+            <Text style={styles.categoriesBackButtonText}>‹</Text>
+          </Pressable>
+          <View style={styles.categoriesHeaderCopy}>
+            <Text style={styles.categoriesTitle}>{strings.categories.title}</Text>
+            <Text style={styles.categoriesSubtitle}>{strings.categories.subtitle}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={strings.categories.addTitle} style={styles.categoriesAddButton} onPress={() => openCategoryForm()}>
+            <Text style={styles.categoriesAddButtonText}>+</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.categoriesSearchBox}>
+          <Image source={searchIcon} resizeMode="contain" style={styles.categoriesSearchIcon} />
+          <TextInput
+            style={styles.categoriesSearchInput}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            placeholder={strings.categories.searchPlaceholder}
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel={strings.categories.searchLabel}
+          />
+        </View>
+
+        <View style={styles.categoriesTabs}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: type === 'expense' }} style={[styles.categoriesTab, type === 'expense' && styles.categoriesTabActive]} onPress={() => setType('expense')}>
+            <Text style={[styles.categoriesTabText, type === 'expense' && styles.categoriesTabTextActive]}>{strings.categories.expenseTab}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: type === 'income' }} style={[styles.categoriesTab, type === 'income' && styles.categoriesTabActive]} onPress={() => setType('income')}>
+            <Text style={[styles.categoriesTabText, type === 'income' && styles.categoriesTabTextActive]}>{strings.categories.incomeTab}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.categoriesCountCard}>
+          <View style={styles.categoriesCountMetric}>
+            <Text style={styles.categoriesCountValue}>{categories.length}</Text>
+            <Text style={styles.categoriesCountLabel}>{strings.categories.categoryCount}</Text>
+          </View>
+          <View style={styles.categoriesCountDivider} />
+          <View style={styles.categoriesCountMetric}>
+            <Text style={styles.categoriesCountValue}>{usedCategoryCount}</Text>
+            <Text style={styles.categoriesCountLabel}>{strings.categories.usedCategoryCount}</Text>
+          </View>
+          <View style={styles.categoriesCountDivider} />
+          <View style={styles.categoriesCountMetric}>
+            <Text style={styles.categoriesCountValue}>{unusedCategoryCount}</Text>
+            <Text style={styles.categoriesCountLabel}>{strings.categories.unusedCategoryCount}</Text>
+          </View>
+        </View>
+
+        <View style={styles.categoriesListCard}>
+          <Text style={styles.categoriesListTitle}>{type === 'expense' ? strings.categories.expenseTab : strings.categories.incomeTab}</Text>
+          {visibleCategories.length === 0 ? (
+            <View style={styles.categoriesEmptyState}>
+              <Text style={styles.categoriesEmptyTitle}>{strings.categories.emptyTitle}</Text>
+              <Text style={styles.categoriesEmptyText}>{strings.categories.emptyText}</Text>
+            </View>
+          ) : visibleCategories.map((category, index) => {
+            const operationCount = budgetStore.getTransactions({ categoryId: category.id }).length;
+            const color = category.color ?? (type === 'income' ? colors.income : colors.expense);
+            const icon = resolveCategoryIconFromKey(category.icon) ?? resolveCategoryIcon(category.name);
+
+            return (
+              <View key={category.id} style={[styles.categoriesRow, index < visibleCategories.length - 1 && styles.categoriesRowDivider]}>
+                <View style={[styles.categoriesIcon, { backgroundColor: categoryPillBackground(color) }]}>
+                  {icon ? <Image source={icon} resizeMode="contain" style={styles.categoriesIconImage} /> : <Text style={[styles.categoriesIconFallback, { color }]}>{categoryShortLabel(category.name)}</Text>}
+                </View>
+                <View style={styles.categoriesRowCopy}>
+                  <Text style={styles.categoriesRowTitle} numberOfLines={1}>{category.name}</Text>
+                  <Text style={styles.categoriesRowSubtitle}>{type === 'expense' ? strings.categories.expenseTab : strings.categories.incomeTab} · {operationCount} {strings.categories.operationCount}</Text>
+                </View>
+                <Pressable accessibilityRole="button" accessibilityLabel={strings.categories.editLabel} style={styles.categoriesEditButton} onPress={() => openCategoryForm(category)}><Text style={styles.categoriesEditButtonText}>✎</Text></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={strings.categories.deleteLabel} style={styles.categoriesDeleteButton} onPress={() => setCategoryPendingDelete(category)}><Text style={styles.categoriesDeleteButtonText}>×</Text></Pressable>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      <Modal visible={isCategoryFormOpen} transparent animationType="fade" onRequestClose={() => setIsCategoryFormOpen(false)}>
+        <KeyboardAvoidingView style={styles.categoriesModalKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.categoriesModalBackdrop} onPress={() => setIsCategoryFormOpen(false)} />
+          <ScrollView contentContainerStyle={styles.categoriesModalScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.categoriesModalCard}>
+            <Text style={styles.categoriesModalTitle}>{editingCategory ? strings.categories.editTitle : strings.categories.addTitle}</Text>
+            <Text style={styles.categoriesFieldLabel}>{strings.categories.nameLabel}</Text>
+            <TextInput style={styles.categoriesNameInput} value={categoryName} onChangeText={setCategoryName} placeholder={strings.categories.namePlaceholder} placeholderTextColor={colors.textMuted} autoFocus maxLength={50} />
+            <Text style={styles.categoriesFieldLabel}>{strings.categories.colorLabel}</Text>
+            <View style={styles.categoriesColorOptions}>
+              {categoryColorOptions.map((color) => <Pressable key={color} accessibilityRole="button" accessibilityState={{ selected: categoryColor === color }} style={[styles.categoriesColorOption, { backgroundColor: color }, categoryColor === color && styles.categoriesColorOptionSelected]} onPress={() => setCategoryColor(color)} />)}
+            </View>
+            <Pressable accessibilityRole="button" style={styles.categoriesMoreColorsButton} onPress={() => setIsColorPickerOpen(true)}>
+              <View style={[styles.categoriesSelectedColorPreview, { backgroundColor: categoryColor }]} />
+              <Text style={styles.categoriesMoreColorsButtonText}>{strings.categories.moreColors}</Text>
+            </Pressable>
+            <Text style={styles.categoriesFieldLabel}>{strings.categories.iconLabel}</Text>
+            <View style={styles.categoriesIconOptions}>
+              {(areAllIconsVisible ? categoryIconOptions : categoryIconOptions.slice(0, 10)).map((option) => (
+                <Pressable key={option.key} accessibilityRole="button" accessibilityState={{ selected: categoryIconKey === option.key }} style={[styles.categoriesIconOption, categoryIconKey === option.key && styles.categoriesIconOptionSelected]} onPress={() => setCategoryIconKey(option.key)}>
+                  <Image source={option.source} resizeMode="contain" style={styles.categoriesIconOptionImage} />
+                </Pressable>
+              ))}
+            </View>
+            <Pressable accessibilityRole="button" style={styles.categoriesMoreColorsButton} onPress={() => setAreAllIconsVisible((value) => !value)}>
+              <Text style={styles.categoriesMoreColorsButtonText}>{areAllIconsVisible ? strings.categories.lessIcons : strings.categories.moreIcons}</Text>
+            </Pressable>
+            {categoryError ? <Text style={styles.categoriesFormError}>{categoryError}</Text> : null}
+            <View style={styles.categoriesModalActions}>
+              <Pressable accessibilityRole="button" style={styles.categoriesCancelButton} onPress={() => setIsCategoryFormOpen(false)}><Text style={styles.categoriesCancelButtonText}>{strings.common.cancel}</Text></Pressable>
+              <Pressable accessibilityRole="button" style={styles.categoriesSaveButton} onPress={saveCategory}><Text style={styles.categoriesSaveButtonText}>{editingCategory ? strings.categories.saveChanges : strings.categories.saveNew}</Text></Pressable>
+            </View>
+          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={isColorPickerOpen} transparent animationType="fade" onRequestClose={() => setIsColorPickerOpen(false)}>
+        <KeyboardAvoidingView style={styles.categoriesModalKeyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.categoriesModalBackdrop} onPress={() => setIsColorPickerOpen(false)} />
+          <ScrollView contentContainerStyle={styles.categoriesModalScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.categoriesModalCard}>
+            <Text style={styles.categoriesModalTitle}>{strings.categories.colorPickerTitle}</Text>
+            <View style={styles.categoriesColorPickerPreviewRow}>
+              <View style={[styles.categoriesColorPickerPreview, { backgroundColor: /^#[0-9A-F]{6}$/i.test(customColorInput) ? customColorInput : categoryColor }]} />
+              <Text style={styles.categoriesFieldLabel}>{strings.categories.customColorLabel}</Text>
+            </View>
+            <TextInput style={styles.categoriesNameInput} value={customColorInput} onChangeText={setCustomColorInput} placeholder={strings.categories.customColorPlaceholder} placeholderTextColor={colors.textMuted} autoCapitalize="characters" maxLength={7} />
+            <View style={styles.categoriesModalActions}>
+              <Pressable accessibilityRole="button" style={styles.categoriesCancelButton} onPress={() => setIsColorPickerOpen(false)}><Text style={styles.categoriesCancelButtonText}>{strings.common.cancel}</Text></Pressable>
+              <Pressable accessibilityRole="button" style={styles.categoriesSaveButton} onPress={() => { if (/^#[0-9A-F]{6}$/i.test(customColorInput)) { setCategoryColor(customColorInput); setIsColorPickerOpen(false); } }}><Text style={styles.categoriesSaveButtonText}>{strings.common.save}</Text></Pressable>
+            </View>
+          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={categoryPendingDelete !== null} transparent animationType="fade" onRequestClose={() => setCategoryPendingDelete(null)}>
+        <View style={styles.categoriesModalOverlay}>
+          <Pressable style={styles.categoriesModalBackdrop} onPress={() => setCategoryPendingDelete(null)} />
+          <View style={styles.categoriesModalCard}>
+            <Text style={styles.categoriesModalTitle}>{strings.categories.deleteTitle}</Text>
+            <Text style={styles.categoriesDeleteText}>{strings.categories.deleteText}</Text>
+            <View style={styles.categoriesModalActions}>
+              <Pressable accessibilityRole="button" style={styles.categoriesCancelButton} onPress={() => setCategoryPendingDelete(null)}><Text style={styles.categoriesCancelButtonText}>{strings.common.cancel}</Text></Pressable>
+              <Pressable accessibilityRole="button" style={styles.categoriesDangerButton} onPress={deleteCategory}><Text style={styles.categoriesSaveButtonText}>{strings.categories.deleteConfirm}</Text></Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <StatusBar />
+    </SafeAreaView>
+  );
+}
+
+function OpeningBalanceScreen({ onBack, onBalanceChanged }) {
+  const { strings, formatters } = useLocalization();
+  const { colors } = useTheme();
+  const budgets = budgetStore.getMonthlyBudgets();
+  const availableMonths = budgets.map((budget) => budget.month);
+  const [selectedMonth, setSelectedMonth] = useState(() => availableMonths[availableMonths.length - 1] ?? null);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const selectedBudget = budgets.find((budget) => budget.month === selectedMonth) ?? null;
+  const existingOverride = budgetStore.getOpeningBalanceOverrides().find((override) => override.month === selectedMonth);
+  const [amountInput, setAmountInput] = useState(() => formatters.formatAmountInput(existingOverride?.amountMinor ?? selectedBudget?.openingBalanceMinor ?? 0));
+  const [amountError, setAmountError] = useState('');
+  const amountMinor = parseAmountInputToMinor(amountInput);
+  const projectedClosingBalanceMinor = amountMinor === null || !selectedBudget
+    ? null
+    : amountMinor + selectedBudget.monthlyResultMinor;
+
+  useEffect(() => {
+    const nextBudget = budgets.find((budget) => budget.month === selectedMonth) ?? null;
+    const nextOverride = budgetStore.getOpeningBalanceOverrides().find((override) => override.month === selectedMonth);
+    setAmountInput(formatters.formatAmountInput(nextOverride?.amountMinor ?? nextBudget?.openingBalanceMinor ?? 0));
+    setAmountError('');
+  }, [formatters, selectedMonth]);
+
+  const saveOpeningBalance = async () => {
+    if (!selectedMonth || amountMinor === null) {
+      setAmountError(strings.openingBalance.amountError);
+      return;
+    }
+
+    budgetStore.setOpeningBalanceOverride(selectedMonth, amountMinor);
+    try {
+      await onBalanceChanged();
+      onBack();
+    } catch (error) {
+      setAmountError(strings.validation.saveFailed);
+    }
+  };
+
+  if (!selectedMonth || !selectedBudget) {
+    return (
+      <SafeAreaView style={styles.placeholderScreen}>
+        <View style={styles.placeholderCard}>
+          <Text style={styles.placeholderTitle}>{strings.dashboard.noBudgetData}</Text>
+          <Text style={styles.placeholderSubtitle}>{strings.dashboard.noBudgetDataText}</Text>
+        </View>
+        <StatusBar />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.openingBalanceScreen}>
+      <ScrollView contentContainerStyle={[styles.openingBalanceContent, { paddingTop: (RNStatusBar.currentHeight ?? 0) + 28 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.openingBalanceHeader}>
+          <Pressable accessibilityRole="button" accessibilityLabel={strings.common.back} style={styles.openingBalanceBackButton} onPress={onBack}>
+            <Text style={styles.openingBalanceBackButtonText}>‹</Text>
+          </Pressable>
+          <View style={styles.openingBalanceHeaderCopy}>
+            <Text style={styles.openingBalanceTitle}>{strings.openingBalance.title}</Text>
+            <Text style={styles.openingBalanceSubtitle}>{strings.openingBalance.subtitle}</Text>
+          </View>
+        </View>
+
+        <View style={styles.openingBalanceCard}>
+          <Text style={styles.openingBalanceFieldLabel}>{strings.openingBalance.monthLabel}</Text>
+          <Pressable accessibilityRole="button" style={styles.openingBalanceMonthButton} onPress={() => setIsMonthPickerOpen((value) => !value)}>
+            <Image source={calendarIcon} resizeMode="contain" style={styles.openingBalanceMonthIcon} />
+            <Text style={styles.openingBalanceMonthText}>{formatters.formatMonthLabel(selectedMonth)}</Text>
+            <Text style={styles.openingBalanceMonthChevron}>{isMonthPickerOpen ? '▲' : '▼'}</Text>
+          </Pressable>
+          {isMonthPickerOpen ? (
+            <View style={styles.openingBalanceMonthList}>
+              {availableMonths.map((month) => (
+                <Pressable key={month} accessibilityRole="button" accessibilityState={{ selected: month === selectedMonth }} style={[styles.openingBalanceMonthOption, month === selectedMonth && styles.openingBalanceMonthOptionActive]} onPress={() => { setSelectedMonth(month); setIsMonthPickerOpen(false); }}>
+                  <Text style={[styles.openingBalanceMonthOptionText, month === selectedMonth && styles.openingBalanceMonthOptionTextActive]}>{formatters.formatMonthLabel(month)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={styles.openingBalanceFieldLabel}>{strings.openingBalance.amountLabel}</Text>
+          <View style={styles.openingBalanceAmountRow}>
+            <TextInput style={styles.openingBalanceAmountInput} value={amountInput} onChangeText={(value) => { setAmountInput(normalizeAmountInput(value)); setAmountError(''); }} keyboardType="decimal-pad" placeholder={strings.openingBalance.amountPlaceholder} placeholderTextColor={colors.textMuted} accessibilityLabel={strings.openingBalance.amountLabel} />
+            <Text style={styles.openingBalanceCurrency}>{formatters.currencySymbol}</Text>
+          </View>
+          {amountError ? <Text style={styles.openingBalanceError}>{amountError}</Text> : null}
+        </View>
+
+        <View style={styles.openingBalanceSummaryCard}>
+          <View style={styles.openingBalanceSummaryRow}>
+            <Text style={styles.openingBalanceSummaryLabel}>{strings.openingBalance.currentOpeningBalance}</Text>
+            <Text style={styles.openingBalanceSummaryValue}>{formatters.formatMinorCurrency(selectedBudget.openingBalanceMinor)}</Text>
+          </View>
+          <View style={styles.openingBalanceSummaryDivider} />
+          <View style={styles.openingBalanceSummaryRow}>
+            <Text style={styles.openingBalanceSummaryLabel}>{strings.openingBalance.calculatedClosingBalance}</Text>
+            <Text style={[styles.openingBalanceSummaryValue, { color: projectedClosingBalanceMinor !== null && projectedClosingBalanceMinor < 0 ? colors.expense : colors.income }]}>{projectedClosingBalanceMinor === null ? '—' : formatters.formatMinorCurrency(projectedClosingBalanceMinor)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.openingBalanceInfoCard}>
+          <Text style={styles.openingBalanceInfoIcon}>i</Text>
+          <Text style={styles.openingBalanceInfoText}>{strings.openingBalance.explanation}</Text>
+        </View>
+
+        <Pressable accessibilityRole="button" style={styles.openingBalanceSaveButton} onPress={saveOpeningBalance}>
+          <Text style={styles.openingBalanceSaveButtonText}>{strings.openingBalance.saveButton}</Text>
+        </Pressable>
+      </ScrollView>
+      <StatusBar />
     </SafeAreaView>
   );
 }
@@ -2955,9 +3415,9 @@ function MoreMenuRow({ iconSource, iconBackgroundColor, title, subtitle, value, 
   );
 }
 
-function MoreScreen() {
+function MoreScreen({ onOpenCategories, onOpenOpeningBalance }) {
   const { strings, language, setLanguage, currencyCode, setCurrency } = useLocalization();
-  const [themeMode, setThemeMode] = useState('light');
+  const { themeMode, setThemeMode } = useTheme();
   const [activeSelector, setActiveSelector] = useState(null);
   const [placeholderEntry, setPlaceholderEntry] = useState(null);
 
@@ -3025,7 +3485,10 @@ function MoreScreen() {
       return {
         title: strings.more.modalTitles.theme,
         selectedValue: themeMode,
-        options: [{ value: 'light', label: strings.themes.light }],
+        options: [
+          { value: 'light', label: strings.themes.light },
+          { value: 'dark', label: strings.themes.dark },
+        ],
         onSelect: setThemeMode,
       };
     }
@@ -3055,14 +3518,14 @@ function MoreScreen() {
             iconBackgroundColor="#E9F9EF"
             title={strings.more.items.categories}
             subtitle={strings.more.subtitles.categories}
-            onPress={() => setPlaceholderEntry('categories')}
+            onPress={onOpenCategories}
           />
           <MoreMenuRow
             iconSource={openingBalanceMenuIcon}
             iconBackgroundColor="#E8F1FF"
             title={strings.more.items.openingBalance}
             subtitle={strings.more.subtitles.openingBalance}
-            onPress={() => setPlaceholderEntry('openingBalance')}
+            onPress={onOpenOpeningBalance}
             isLast
           />
         </View>
@@ -3277,7 +3740,7 @@ function BottomTabBar({ activeTab, onChangeTab }) {
   );
 }
 
-function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction, onOpenEditTransaction, dataVersion }) {
+function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransaction, onOpenEditTransaction, onOpenCategories, onOpenOpeningBalance, dataVersion }) {
   const { strings } = useLocalization();
 
   const activeScreen = (() => {
@@ -3290,7 +3753,7 @@ function MainTabsScreen({ activeTab, onChangeTab, onBackHome, onOpenAddTransacti
     }
 
     if (activeTab === 'more') {
-      return <MoreScreen />;
+      return <MoreScreen onOpenCategories={onOpenCategories} onOpenOpeningBalance={onOpenOpeningBalance} />;
     }
 
     return <DashboardScreen onBackHome={onBackHome} onOpenAddTransaction={onOpenAddTransaction} />;
@@ -3387,6 +3850,7 @@ function AppContent() {
   const [hasLoadedAppState, setHasLoadedAppState] = useState(false);
   const [language, setLanguage] = useState(() => detectPreferredLanguage());
   const [currencyCode, setCurrencyCode] = useState(() => detectPreferredCurrency());
+  const [themeMode, setThemeMode] = useState('light');
 
   const localization = useMemo(() => createLocalizationBundle(language, currencyCode), [currencyCode, language]);
 
@@ -3414,11 +3878,20 @@ function AppContent() {
     }
   };
 
+  const handleSetTheme = async (nextThemeMode) => {
+    if (nextThemeMode !== 'light' && nextThemeMode !== 'dark') {
+      return;
+    }
+
+    setThemeMode(nextThemeMode);
+    await writeThemeState(nextThemeMode);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
-    Promise.all([readOnboardingState(), readLanguageState(), readCurrencyState()])
-      .then(([storedOnboardingState, storedLanguage, storedCurrency]) => {
+    Promise.all([readOnboardingState(), readLanguageState(), readCurrencyState(), readThemeState(), hydrateBudgetStore()])
+      .then(([storedOnboardingState, storedLanguage, storedCurrency, storedTheme]) => {
         if (!isMounted) {
           return;
         }
@@ -3427,6 +3900,7 @@ function AppContent() {
         const preferredCurrency = storedCurrency ?? detectPreferredCurrency();
         setLanguage(preferredLanguage);
         setCurrencyCode(preferredCurrency);
+        setThemeMode(storedTheme ?? 'light');
 
         if (!storedLanguage) {
           void writeLanguageState(preferredLanguage);
@@ -3470,10 +3944,12 @@ function AppContent() {
     await clearOnboardingState();
     await clearLanguageState();
     await clearCurrencyState();
+    await clearThemeState();
     const resetLanguage = detectPreferredLanguage();
     const resetCurrency = detectPreferredCurrency();
     setLanguage(resetLanguage);
     setCurrencyCode(resetCurrency);
+    setThemeMode('light');
     await writeLanguageState(resetLanguage);
     await writeCurrencyState(resetCurrency);
     setHasSeenOnboarding(false);
@@ -3490,8 +3966,9 @@ function AppContent() {
     setScreen('onboarding');
   };
 
-  const handleCreateTransaction = (payload) => {
+  const handleCreateTransaction = async (payload) => {
     budgetStore.addTransaction(payload);
+    await persistBudgetStore();
     setDataVersion((current) => current + 1);
     setScreen('main');
   };
@@ -3501,22 +3978,24 @@ function AppContent() {
     setScreen('edit-transaction');
   };
 
-  const handleUpdateTransaction = (payload) => {
+  const handleUpdateTransaction = async (payload) => {
     if (!editingTransactionId) {
       return;
     }
 
     budgetStore.updateTransaction(editingTransactionId, payload);
+    await persistBudgetStore();
     setDataVersion((current) => current + 1);
     setScreen('main');
   };
 
-  const handleDeleteTransaction = () => {
+  const handleDeleteTransaction = async () => {
     if (!editingTransactionId) {
       return;
     }
 
     budgetStore.deleteTransaction(editingTransactionId);
+    await persistBudgetStore();
     setDataVersion((current) => current + 1);
     setScreen('main');
   };
@@ -3543,7 +4022,15 @@ function AppContent() {
     }
 
     if (screen === 'add-transaction') {
-      return <AddTransactionScreen onBack={() => setScreen('main')} onSave={handleCreateTransaction} />;
+      return <AddTransactionScreen onBack={() => setScreen('main')} onSave={handleCreateTransaction} onManageCategories={() => setScreen('categories-from-transaction')} />;
+    }
+
+    if (screen === 'categories' || screen === 'categories-from-transaction') {
+      return <CategoryManagementScreen onBack={() => setScreen(screen === 'categories-from-transaction' ? 'add-transaction' : 'main')} onCategoriesChanged={async () => { await persistBudgetStore(); setDataVersion((current) => current + 1); }} />;
+    }
+
+    if (screen === 'opening-balance') {
+      return <OpeningBalanceScreen onBack={() => setScreen('main')} onBalanceChanged={async () => { await persistBudgetStore(); setDataVersion((current) => current + 1); }} />;
     }
 
     if (screen === 'edit-transaction') {
@@ -3555,6 +4042,8 @@ function AppContent() {
             onBackHome={() => setScreen('home')}
             onOpenAddTransaction={() => setScreen('add-transaction')}
             onOpenEditTransaction={handleOpenEditTransaction}
+            onOpenCategories={() => setScreen('categories')}
+            onOpenOpeningBalance={() => setScreen('opening-balance')}
             dataVersion={dataVersion}
           />
         );
@@ -3567,6 +4056,7 @@ function AppContent() {
           onBack={() => setScreen('main')}
           onSave={handleUpdateTransaction}
           onDelete={handleDeleteTransaction}
+          onManageCategories={() => setScreen('categories-from-transaction')}
         />
       );
     }
@@ -3578,6 +4068,8 @@ function AppContent() {
         onBackHome={() => setScreen('home')}
         onOpenAddTransaction={() => setScreen('add-transaction')}
         onOpenEditTransaction={handleOpenEditTransaction}
+        onOpenCategories={() => setScreen('categories')}
+        onOpenOpeningBalance={() => setScreen('opening-balance')}
         dataVersion={dataVersion}
       />
     );
@@ -3587,7 +4079,13 @@ function AppContent() {
     return null;
   }
 
-  return <LocalizationContext.Provider value={{ ...localization, setLanguage: handleSetLanguage, setCurrency: handleSetCurrency }}>{content}</LocalizationContext.Provider>;
+  activeThemeMode = themeMode;
+
+  return (
+    <ThemeContext.Provider value={{ themeMode, colors: themeMode === 'dark' ? darkThemeColors : themeColors, setThemeMode: handleSetTheme }}>
+      <LocalizationContext.Provider value={{ ...localization, setLanguage: handleSetLanguage, setCurrency: handleSetCurrency }}>{content}</LocalizationContext.Provider>
+    </ThemeContext.Provider>
+  );
 }
 
 export default function App() {
@@ -3598,7 +4096,8 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(themeColors) {
+  const styleDefinitions = {
   startupLoadingScreen: {
     flex: 1,
     backgroundColor: themeColors.background,
@@ -6869,5 +7368,186 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     fontWeight: '700',
     fontFamily: fontFamilies.sans,
+  },
+  categoriesScreen: { flex: 1, backgroundColor: themeColors.background },
+  categoriesContent: { paddingHorizontal: 24, paddingBottom: 36, gap: 22 },
+  categoriesHeader: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  categoriesBackButton: { width: 58, height: 58, borderRadius: 17, backgroundColor: themeColors.surface, alignItems: 'center', justifyContent: 'center', elevation: 2 },
+  categoriesBackButtonText: { color: themeColors.textPrimary, fontSize: 38, lineHeight: 40, fontFamily: fontFamilies.sans },
+  categoriesHeaderCopy: { flex: 1, gap: 3 },
+  categoriesTitle: { color: themeColors.textPrimary, fontSize: 27, lineHeight: 33, fontWeight: '800', fontFamily: fontFamilies.sans },
+  categoriesSubtitle: { color: themeColors.textSecondary, fontSize: 14, lineHeight: 19, fontFamily: fontFamilies.sans },
+  categoriesAddButton: { width: 58, height: 58, borderRadius: 17, backgroundColor: themeColors.income, alignItems: 'center', justifyContent: 'center', elevation: 3 },
+  categoriesAddButtonText: { color: '#ffffff', fontSize: 37, lineHeight: 40, fontWeight: '300', fontFamily: fontFamilies.sans },
+  categoriesSearchBox: { height: 62, borderRadius: 19, backgroundColor: themeColors.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, gap: 12, elevation: 1 },
+  categoriesSearchIcon: { width: 25, height: 25 },
+  categoriesSearchInput: { flex: 1, color: themeColors.textPrimary, fontSize: 16, lineHeight: 21, fontFamily: fontFamilies.sans },
+  categoriesTabs: { flexDirection: 'row', borderRadius: 18, backgroundColor: themeColors.surfaceAlt, padding: 4 },
+  categoriesTab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+  categoriesTabActive: { backgroundColor: themeColors.surface, elevation: 1 },
+  categoriesTabText: { color: themeColors.textSecondary, fontSize: 16, lineHeight: 21, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesTabTextActive: { color: themeColors.textPrimary },
+  categoriesCountCard: { minHeight: 112, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 10, borderRadius: 18, backgroundColor: themeColors.surface, elevation: 2 },
+  categoriesCountMetric: { flex: 1, alignItems: 'center', gap: 4 },
+  categoriesCountValue: { color: themeColors.textPrimary, fontSize: 27, lineHeight: 32, fontWeight: '800', fontFamily: fontFamilies.sans },
+  categoriesCountLabel: { color: themeColors.textSecondary, fontSize: 12, lineHeight: 17, fontFamily: fontFamilies.sans, textAlign: 'center' },
+  categoriesCountDivider: { width: 1, height: 48, backgroundColor: themeColors.border },
+  categoriesListCard: { borderRadius: 22, backgroundColor: themeColors.surface, paddingHorizontal: 16, paddingVertical: 12, elevation: 2, borderWidth: 1, borderColor: themeColors.border },
+  categoriesListTitle: { color: themeColors.textPrimary, fontSize: 20, lineHeight: 27, fontWeight: '800', fontFamily: fontFamilies.sans, paddingVertical: 7 },
+  categoriesRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  categoriesRowDivider: { borderBottomWidth: 1.5, borderBottomColor: themeColors.border },
+  categoriesIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  categoriesIconImage: { width: 29, height: 29 },
+  categoriesIconFallback: { fontSize: 20, lineHeight: 25, fontWeight: '800', fontFamily: fontFamilies.sans },
+  categoriesRowCopy: { flex: 1, gap: 3 },
+  categoriesRowTitle: { color: themeColors.textPrimary, fontSize: 17, lineHeight: 22, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesRowSubtitle: { color: themeColors.textSecondary, fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.sans },
+  categoriesEditButton: { width: 42, height: 42, borderRadius: 13, backgroundColor: themeColors.infoSoft, alignItems: 'center', justifyContent: 'center' },
+  categoriesEditButtonText: { color: themeColors.info, fontSize: 22, lineHeight: 25, fontFamily: fontFamilies.sans, fontWeight: '700' },
+  categoriesDeleteButton: { width: 42, height: 42, borderRadius: 13, backgroundColor: themeColors.expenseSoft, alignItems: 'center', justifyContent: 'center' },
+  categoriesDeleteButtonText: { color: themeColors.expense, fontSize: 27, lineHeight: 29, fontFamily: fontFamilies.sans },
+  categoriesEmptyState: { paddingVertical: 28, gap: 6 },
+  categoriesEmptyTitle: { color: themeColors.textPrimary, fontSize: 17, lineHeight: 22, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesEmptyText: { color: themeColors.textSecondary, fontSize: 14, lineHeight: 20, fontFamily: fontFamilies.sans },
+  categoriesModalOverlay: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, backgroundColor: 'rgba(15, 23, 42, 0.48)' },
+  categoriesModalBackdrop: { ...StyleSheet.absoluteFillObject },
+  categoriesModalKeyboardAvoiding: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.60)' },
+  categoriesModalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 24 },
+  categoriesModalCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.surface,
+    padding: 20,
+    gap: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  categoriesModalTitle: { color: themeColors.textPrimary, fontSize: 22, lineHeight: 28, fontWeight: '800', fontFamily: fontFamilies.sans },
+  categoriesFieldLabel: { color: themeColors.textSecondary, fontSize: 14, lineHeight: 19, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesNameInput: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: themeColors.border, color: themeColors.textPrimary, paddingHorizontal: 14, fontSize: 16, fontFamily: fontFamilies.sans },
+  categoriesColorOptions: { flexDirection: 'row', gap: 12 },
+  categoriesColorOption: { width: 30, height: 30, borderRadius: 15 },
+  categoriesColorOptionSelected: { borderWidth: 3, borderColor: themeColors.textPrimary },
+  categoriesMoreColorsButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  categoriesMoreColorsButtonText: { color: themeColors.primary, fontSize: 14, lineHeight: 19, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesSelectedColorPreview: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: themeColors.border },
+  categoriesColorPickerPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  categoriesColorPickerPreview: { width: 42, height: 42, borderRadius: 13, borderWidth: 1, borderColor: themeColors.border },
+  categoriesIconOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  categoriesIconOption: { width: 46, height: 46, borderRadius: 13, backgroundColor: themeColors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: themeColors.border },
+  categoriesIconOptionSelected: { borderColor: themeColors.primary, borderWidth: 2, backgroundColor: themeColors.primarySoft },
+  categoriesIconOptionImage: { width: 26, height: 26 },
+  categoriesFormError: { color: themeColors.expense, fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.sans },
+  categoriesModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
+  categoriesCancelButton: { minHeight: 46, borderRadius: 14, paddingHorizontal: 16, justifyContent: 'center', backgroundColor: themeColors.surfaceAlt },
+  categoriesCancelButtonText: { color: themeColors.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesSaveButton: { minHeight: 46, borderRadius: 14, paddingHorizontal: 16, justifyContent: 'center', backgroundColor: themeColors.primary },
+  categoriesDangerButton: { minHeight: 46, borderRadius: 14, paddingHorizontal: 16, justifyContent: 'center', backgroundColor: themeColors.expense },
+  categoriesSaveButtonText: { color: '#ffffff', fontSize: 14, lineHeight: 18, fontWeight: '700', fontFamily: fontFamilies.sans },
+  categoriesDeleteText: { color: themeColors.textSecondary, fontSize: 15, lineHeight: 21, fontFamily: fontFamilies.sans },
+  openingBalanceScreen: { flex: 1, backgroundColor: themeColors.background },
+  openingBalanceContent: { paddingHorizontal: 24, paddingBottom: 36, gap: 18 },
+  openingBalanceHeader: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  openingBalanceBackButton: { width: 58, height: 58, borderRadius: 17, backgroundColor: themeColors.surface, alignItems: 'center', justifyContent: 'center', elevation: 2 },
+  openingBalanceBackButtonText: { color: themeColors.textPrimary, fontSize: 38, lineHeight: 40, fontFamily: fontFamilies.sans },
+  openingBalanceHeaderCopy: { flex: 1, gap: 3 },
+  openingBalanceTitle: { color: themeColors.textPrimary, fontSize: 27, lineHeight: 33, fontWeight: '800', fontFamily: fontFamilies.sans },
+  openingBalanceSubtitle: { color: themeColors.textSecondary, fontSize: 14, lineHeight: 20, fontFamily: fontFamilies.sans },
+  openingBalanceCard: { borderRadius: 22, backgroundColor: themeColors.surface, padding: 18, gap: 10, elevation: 2, borderWidth: 1, borderColor: themeColors.border },
+  openingBalanceFieldLabel: { color: themeColors.textSecondary, fontSize: 14, lineHeight: 19, fontWeight: '700', fontFamily: fontFamilies.sans, marginTop: 3 },
+  openingBalanceMonthButton: { minHeight: 54, borderRadius: 14, borderWidth: 1, borderColor: themeColors.border, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  openingBalanceMonthIcon: { width: 20, height: 20 },
+  openingBalanceMonthText: { flex: 1, color: themeColors.textPrimary, fontSize: 16, lineHeight: 22, fontWeight: '700', fontFamily: fontFamilies.sans },
+  openingBalanceMonthChevron: { color: themeColors.textSecondary, fontSize: 12, lineHeight: 16, fontFamily: fontFamilies.sans },
+  openingBalanceMonthList: { borderRadius: 14, borderWidth: 1, borderColor: themeColors.border, overflow: 'hidden' },
+  openingBalanceMonthOption: { minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: themeColors.border },
+  openingBalanceMonthOptionActive: { backgroundColor: themeColors.primarySoft },
+  openingBalanceMonthOptionText: { color: themeColors.textPrimary, fontSize: 15, lineHeight: 20, fontFamily: fontFamilies.sans },
+  openingBalanceMonthOptionTextActive: { color: themeColors.primary, fontWeight: '700' },
+  openingBalanceAmountRow: { minHeight: 60, borderRadius: 14, borderWidth: 1, borderColor: themeColors.border, flexDirection: 'row', alignItems: 'center', paddingLeft: 14, paddingRight: 16 },
+  openingBalanceAmountInput: { flex: 1, color: themeColors.textPrimary, fontSize: 24, lineHeight: 30, fontWeight: '700', fontFamily: fontFamilies.sans },
+  openingBalanceCurrency: { color: themeColors.textSecondary, fontSize: 16, lineHeight: 21, fontWeight: '700', fontFamily: fontFamilies.sans },
+  openingBalanceError: { color: themeColors.expense, fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.sans },
+  openingBalanceSummaryCard: { borderRadius: 22, backgroundColor: themeColors.surface, paddingHorizontal: 18, paddingVertical: 8, elevation: 1 },
+  openingBalanceSummaryRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  openingBalanceSummaryLabel: { flex: 1, color: themeColors.textSecondary, fontSize: 14, lineHeight: 19, fontFamily: fontFamilies.sans },
+  openingBalanceSummaryValue: { color: themeColors.textPrimary, fontSize: 16, lineHeight: 21, fontWeight: '800', fontFamily: fontFamilies.sans },
+  openingBalanceSummaryDivider: { height: 1, backgroundColor: themeColors.border },
+  openingBalanceInfoCard: { flexDirection: 'row', gap: 12, borderRadius: 18, backgroundColor: themeColors.infoSoft, padding: 16 },
+  openingBalanceInfoIcon: { width: 23, height: 23, borderRadius: 12, backgroundColor: themeColors.info, color: '#ffffff', textAlign: 'center', fontSize: 15, lineHeight: 23, fontWeight: '800', fontFamily: fontFamilies.sans },
+  openingBalanceInfoText: { flex: 1, color: themeColors.textPrimary, fontSize: 14, lineHeight: 20, fontFamily: fontFamilies.sans },
+  openingBalanceSaveButton: { minHeight: 58, borderRadius: 18, backgroundColor: themeColors.primary, alignItems: 'center', justifyContent: 'center', elevation: 3 },
+  openingBalanceSaveButtonText: { color: '#ffffff', fontSize: 16, lineHeight: 21, fontWeight: '800', fontFamily: fontFamilies.sans },
+  };
+
+  return StyleSheet.create(applyThemeToStaticColors(styleDefinitions, themeColors));
+}
+
+function applyThemeToStaticColors(styleDefinitions, themeColors) {
+  if (themeColors !== darkThemeColors) {
+    return styleDefinitions;
+  }
+
+  return Object.fromEntries(Object.entries(styleDefinitions).map(([styleName, style]) => [
+    styleName,
+    Object.fromEntries(Object.entries(style).map(([property, value]) => [property, resolveDarkStyleColor(property, value, themeColors)])),
+  ]));
+}
+
+function resolveDarkStyleColor(property, value, themeColors) {
+  if (!property.toLowerCase().includes('color') || typeof value !== 'string') {
+    return value;
+  }
+
+  if (property === 'backgroundColor') {
+    if (value === 'transparent' || !value.startsWith('#')) {
+      return value === 'transparent' ? value : themeColors.surfaceAlt;
+    }
+
+    const hex = value.slice(1);
+    if (hex.length !== 6) {
+      return themeColors.surface;
+    }
+
+    const red = Number.parseInt(hex.slice(0, 2), 16);
+    const green = Number.parseInt(hex.slice(2, 4), 16);
+    const blue = Number.parseInt(hex.slice(4, 6), 16);
+    const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+    const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+
+    if (saturation > 80 && brightness < 210) {
+      return value;
+    }
+
+    return brightness > 225 ? themeColors.surface : themeColors.surfaceAlt;
+  }
+
+  if (property === 'borderColor') {
+    return themeColors.border;
+  }
+
+  if (property === 'shadowColor') {
+    return '#000000';
+  }
+
+  if (property === 'color') {
+    return value === '#ffffff' || value === '#fff' ? value : themeColors.textPrimary;
+  }
+
+  return value;
+}
+
+const resolvedStyles = {
+  light: createStyles(themeColors),
+  dark: createStyles(darkThemeColors),
+};
+
+const styles = new Proxy({}, {
+  get(_target, property) {
+    return resolvedStyles[activeThemeMode][property];
   },
 });

@@ -25,6 +25,27 @@ export const themeColors = {
   infoSoft: '#dbeafe',
 } as const;
 
+export const darkThemeColors = {
+  primary: '#818cf8',
+  primarySoft: '#312e81',
+  accent: '#2dd4bf',
+  background: '#111827',
+  surface: '#1f2937',
+  surfaceAlt: '#374151',
+  border: '#4b5563',
+  textPrimary: '#f8fafc',
+  textSecondary: '#cbd5e1',
+  textMuted: '#94a3b8',
+  income: '#4ade80',
+  incomeSoft: '#14532d',
+  expense: '#fb7185',
+  expenseSoft: '#881337',
+  warning: '#fbbf24',
+  warningSoft: '#78350f',
+  info: '#60a5fa',
+  infoSoft: '#1e3a8a',
+} as const;
+
 export const baseColorTokens: ColorToken[] = [
   { name: 'Primary / Brand', hex: '#4F46E5', description: 'primary actions, active states' },
   { name: 'Primary Soft', hex: '#EEF2FF', description: 'subtle primary backgrounds' },

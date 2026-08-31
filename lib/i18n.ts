@@ -235,6 +235,52 @@ export interface LocalizationStrings {
     selectCategorySaveButton: string;
     operationMonthAutoNote: string;
   };
+  categories: {
+    title: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    searchLabel: string;
+    expenseTab: string;
+    incomeTab: string;
+    categoryCount: string;
+    usedCategoryCount: string;
+    unusedCategoryCount: string;
+    operationCount: string;
+    emptyTitle: string;
+    emptyText: string;
+    addTitle: string;
+    editTitle: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    colorLabel: string;
+    moreColors: string;
+    colorPickerTitle: string;
+    customColorLabel: string;
+    customColorPlaceholder: string;
+    iconLabel: string;
+    moreIcons: string;
+    lessIcons: string;
+    saveNew: string;
+    saveChanges: string;
+    editLabel: string;
+    deleteLabel: string;
+    deleteTitle: string;
+    deleteText: string;
+    deleteConfirm: string;
+    deleteFailedTitle: string;
+  };
+  openingBalance: {
+    title: string;
+    subtitle: string;
+    monthLabel: string;
+    amountLabel: string;
+    amountPlaceholder: string;
+    currentOpeningBalance: string;
+    calculatedClosingBalance: string;
+    explanation: string;
+    saveButton: string;
+    amountError: string;
+  };
   more: {
     title: string;
     subtitle: string;
@@ -282,6 +328,7 @@ export interface LocalizationStrings {
   };
   themes: {
     light: string;
+    dark: string;
   };
   currencies: {
     PLN: string;
@@ -525,6 +572,52 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       selectCategorySaveButton: "Zapisz wybór",
       operationMonthAutoNote: "Miesiąc operacji jest uzupełniany automatycznie na podstawie podanej daty i nie można go zmienić ręcznie.",
     },
+    categories: {
+      title: "Kategorie",
+      subtitle: "Zarządzaj kategoriami wydatków i wpływów",
+      searchPlaceholder: "Szukaj kategorii",
+      searchLabel: "Szukaj kategorii",
+      expenseTab: "Wydatki",
+      incomeTab: "Wpływy",
+      categoryCount: "kategorii",
+      usedCategoryCount: "z operacjami",
+      unusedCategoryCount: "bez operacji",
+      operationCount: "operacji",
+      emptyTitle: "Brak kategorii",
+      emptyText: "Dodaj pierwszą kategorię dla tego typu operacji.",
+      addTitle: "Dodaj kategorię",
+      editTitle: "Edytuj kategorię",
+      nameLabel: "Nazwa kategorii",
+      namePlaceholder: "Np. Zdrowie",
+      colorLabel: "Kolor kategorii",
+      moreColors: "Więcej kolorów",
+      colorPickerTitle: "Wybierz własny kolor",
+      customColorLabel: "Kolor w formacie #RRGGBB",
+      customColorPlaceholder: "#2563EB",
+      iconLabel: "Ikona kategorii",
+      moreIcons: "Więcej ikon",
+      lessIcons: "Mniej ikon",
+      saveNew: "Dodaj kategorię",
+      saveChanges: "Zapisz zmiany",
+      editLabel: "Edytuj kategorię",
+      deleteLabel: "Usuń kategorię",
+      deleteTitle: "Usunąć kategorię?",
+      deleteText: "Tej akcji nie można cofnąć.",
+      deleteConfirm: "Usuń",
+      deleteFailedTitle: "Nie można usunąć kategorii",
+    },
+    openingBalance: {
+      title: "Saldo początkowe",
+      subtitle: "Ustaw ręczne saldo na początek wybranego miesiąca.",
+      monthLabel: "Miesiąc przypisania",
+      amountLabel: "Saldo początkowe",
+      amountPlaceholder: "0,00",
+      currentOpeningBalance: "Obecne saldo początkowe",
+      calculatedClosingBalance: "Przewidywane saldo końcowe",
+      explanation: "Zmiana salda początkowego wpłynie na saldo wybranego miesiąca i kolejnych miesięcy.",
+      saveButton: "Zapisz saldo początkowe",
+      amountError: "Wpisz prawidłową kwotę.",
+    },
     more: {
       title: "Więcej",
       subtitle: "Zarządzaj ustawieniami i dodatkowymi opcjami aplikacji.",
@@ -572,6 +665,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     },
     themes: {
       light: "Jasny",
+      dark: "Ciemny",
     },
     currencies: {
       PLN: "PLN (zł)",
@@ -591,6 +685,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       "month-format-invalid": "Miesiąc przypisania musi mieć format YYYY-MM.",
       "month-invalid": "Miesiąc przypisania jest nieprawidłowy.",
       "category-name-required": "Nazwa kategorii jest wymagana.",
+      "category-name-too-long": "Nazwa kategorii nie może mieć więcej niż 50 znaków.",
       "category-name-duplicate": "Kategoria o tej nazwie już istnieje dla tego typu.",
       "category-in-use": "Nie można usunąć tej kategorii, ponieważ jest przypisana do istniejących operacji. Najpierw usuń powiązane operacje lub zmień ich kategorię.",
       "category-not-found": "Nie znaleziono kategorii.",
@@ -828,6 +923,52 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       selectCategorySaveButton: "Save selection",
       operationMonthAutoNote: "The operation month is filled automatically from the provided date and cannot be edited manually.",
     },
+    categories: {
+      title: "Categories",
+      subtitle: "Manage expense and income categories",
+      searchPlaceholder: "Search categories",
+      searchLabel: "Search categories",
+      expenseTab: "Expenses",
+      incomeTab: "Income",
+      categoryCount: "categories",
+      usedCategoryCount: "with operations",
+      unusedCategoryCount: "without operations",
+      operationCount: "operations",
+      emptyTitle: "No categories",
+      emptyText: "Add the first category for this operation type.",
+      addTitle: "Add category",
+      editTitle: "Edit category",
+      nameLabel: "Category name",
+      namePlaceholder: "For example, Health",
+      colorLabel: "Category color",
+      moreColors: "More colors",
+      colorPickerTitle: "Choose a custom color",
+      customColorLabel: "Color in #RRGGBB format",
+      customColorPlaceholder: "#2563EB",
+      iconLabel: "Category icon",
+      moreIcons: "More icons",
+      lessIcons: "Fewer icons",
+      saveNew: "Add category",
+      saveChanges: "Save changes",
+      editLabel: "Edit category",
+      deleteLabel: "Delete category",
+      deleteTitle: "Delete category?",
+      deleteText: "This action cannot be undone.",
+      deleteConfirm: "Delete",
+      deleteFailedTitle: "Cannot delete category",
+    },
+    openingBalance: {
+      title: "Opening balance",
+      subtitle: "Set a manual balance for the start of the selected month.",
+      monthLabel: "Assigned month",
+      amountLabel: "Opening balance",
+      amountPlaceholder: "0.00",
+      currentOpeningBalance: "Current opening balance",
+      calculatedClosingBalance: "Projected closing balance",
+      explanation: "Changing the opening balance affects the selected month and following months.",
+      saveButton: "Save opening balance",
+      amountError: "Enter a valid amount.",
+    },
     more: {
       title: "More",
       subtitle: "Manage app settings and additional options.",
@@ -875,6 +1016,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     },
     themes: {
       light: "Light",
+      dark: "Dark",
     },
     currencies: {
       PLN: "PLN (zł)",
@@ -894,6 +1036,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       "month-format-invalid": "Assigned month must use the YYYY-MM format.",
       "month-invalid": "Assigned month is invalid.",
       "category-name-required": "Category name is required.",
+      "category-name-too-long": "Category name cannot be longer than 50 characters.",
       "category-name-duplicate": "A category with this name already exists for this type.",
       "category-in-use": "This category cannot be deleted because it is assigned to existing operations. Delete the linked operations first or change their category.",
       "category-not-found": "Category not found.",
