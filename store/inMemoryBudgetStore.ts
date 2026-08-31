@@ -69,6 +69,14 @@ function sanitizeCategoryName(name: string): string {
   return name.trim();
 }
 
+const MAX_CATEGORY_NAME_LENGTH = 50;
+
+function assertCategoryNameLength(name: string): void {
+  if (name.length > MAX_CATEGORY_NAME_LENGTH) {
+    throw new AppError("category-name-too-long");
+  }
+}
+
 function createId(prefix: string): string {
   const random = Math.random().toString(36).slice(2, 10);
   return `${prefix}-${Date.now()}-${random}`;
@@ -99,6 +107,12 @@ export class InMemoryBudgetStore {
     this.openingBalanceOverrides = seed.openingBalanceOverrides.map(cloneOpeningBalanceOverride);
   }
 
+  replaceData(data: BudgetDataSeed): void {
+    this.categories = data.categories.map(cloneCategory);
+    this.transactions = data.transactions.map(cloneTransaction);
+    this.openingBalanceOverrides = data.openingBalanceOverrides.map(cloneOpeningBalanceOverride);
+  }
+
   getCategories(type?: Category["type"]): Category[] {
     const selected = type ? this.categories.filter((category) => category.type === type) : this.categories;
     return selected.map(cloneCategory);
@@ -110,6 +124,8 @@ export class InMemoryBudgetStore {
     if (!name) {
       throw new AppError("category-name-required");
     }
+
+    assertCategoryNameLength(name);
 
     const duplicateExists = this.categories.some(
       (category) => category.type === input.type && category.name.toLowerCase() === name.toLowerCase(),
@@ -146,6 +162,8 @@ export class InMemoryBudgetStore {
     if (!nextName) {
       throw new AppError("category-name-required");
     }
+
+    assertCategoryNameLength(nextName);
 
     const duplicateExists = this.categories.some(
       (category) =>

@@ -120,6 +120,83 @@ export interface LocalizationStrings {
     transactionExpense: string;
     operationFallback: string;
   };
+  analytics: {
+    title: string;
+    noDataTitle: string;
+    noDataText: string;
+    noComparison: string;
+    versusPrevious: string;
+    paceUsedIncomeLabel: string;
+    remainingDaysTemplate: string;
+    remainingDaysClosed: string;
+    forecastTitle: string;
+    projectedExpenses: string;
+    projectedBalance: string;
+    safePerDay: string;
+    forecastSubtitle: string;
+    forecastClosedSubtitle: string;
+    insightsTitle: string;
+    expenseCategoriesTitle: string;
+    incomeExpenseTrendsTitle: string;
+    trendAction: string;
+    emptyStatisticShort: string;
+    emptyStatisticValue: string;
+    summary: {
+      income: string;
+      expense: string;
+      balance: string;
+    };
+    stats: {
+      mostExpensiveDay: string;
+      noSpendDays: string;
+      averageExpense: string;
+      operationCount: string;
+      perOperation: string;
+      inMonth: string;
+      days: string;
+    };
+    detail: {
+      insightLabel: string;
+      statisticLabel: string;
+      conclusionLabel: string;
+      recommendationLabel: string;
+      closeButton: string;
+    };
+    tags: {
+      positive: string;
+      neutral: string;
+      warning: string;
+    };
+    templates: {
+      expenseIncreaseTitle: string;
+      expenseIncreaseSummary: string;
+      expenseIncreaseRecommendation: string;
+      incomeIncreaseTitle: string;
+      incomeIncreaseSummary: string;
+      incomeIncreaseRecommendation: string;
+      topCategoryShareTitle: string;
+      topCategoryShareSummary: string;
+      topCategoryShareRecommendation: string;
+      healthyBalanceTitle: string;
+      healthyBalanceSummary: string;
+      healthyBalanceRecommendation: string;
+      budgetPressureTitle: string;
+      budgetPressureSummary: string;
+      budgetPressureRecommendation: string;
+      mostExpensiveDaySummary: string;
+      mostExpensiveDayRecommendation: string;
+      noSpendDaysSummary: string;
+      noSpendDaysRecommendation: string;
+      averageExpenseSummary: string;
+      averageExpenseRecommendation: string;
+      operationCountSummary: string;
+      operationCountRecommendation: string;
+      categoryBreakdownRecommendation: string;
+      trendRecommendation: string;
+      forecastSummary: string;
+      forecastRecommendation: string;
+    };
+  };
   addTransaction: {
     createTitle: string;
     editTitle: string;
@@ -157,6 +234,52 @@ export interface LocalizationStrings {
     selectCategoryManageLink: string;
     selectCategorySaveButton: string;
     operationMonthAutoNote: string;
+  };
+  categories: {
+    title: string;
+    subtitle: string;
+    searchPlaceholder: string;
+    searchLabel: string;
+    expenseTab: string;
+    incomeTab: string;
+    categoryCount: string;
+    usedCategoryCount: string;
+    unusedCategoryCount: string;
+    operationCount: string;
+    emptyTitle: string;
+    emptyText: string;
+    addTitle: string;
+    editTitle: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    colorLabel: string;
+    moreColors: string;
+    colorPickerTitle: string;
+    customColorLabel: string;
+    customColorPlaceholder: string;
+    iconLabel: string;
+    moreIcons: string;
+    lessIcons: string;
+    saveNew: string;
+    saveChanges: string;
+    editLabel: string;
+    deleteLabel: string;
+    deleteTitle: string;
+    deleteText: string;
+    deleteConfirm: string;
+    deleteFailedTitle: string;
+  };
+  openingBalance: {
+    title: string;
+    subtitle: string;
+    monthLabel: string;
+    amountLabel: string;
+    amountPlaceholder: string;
+    currentOpeningBalance: string;
+    calculatedClosingBalance: string;
+    explanation: string;
+    saveButton: string;
+    amountError: string;
   };
   more: {
     title: string;
@@ -205,6 +328,7 @@ export interface LocalizationStrings {
   };
   themes: {
     light: string;
+    dark: string;
   };
   currencies: {
     PLN: string;
@@ -224,7 +348,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     tabs: {
       dashboard: "Dashboard",
       operations: "Operacje",
-      analytics: "Analizy",
+      analytics: "Analiza",
       more: "Więcej",
     },
     common: {
@@ -333,6 +457,83 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       transactionExpense: "Wydatek",
       operationFallback: "Operacja",
     },
+    analytics: {
+      title: "Analiza",
+      noDataTitle: "Brak danych do analizy",
+      noDataText: "Dodaj operacje, aby zobaczyć interpretację budżetu i lokalnie wygenerowane wskazówki.",
+      noComparison: "Brak porównania",
+      versusPrevious: "vs",
+      paceUsedIncomeLabel: "wykorzystanych wpływów",
+      remainingDaysTemplate: "Do końca miesiąca zostało {count} dni",
+      remainingDaysClosed: "Miesiąc został już zamknięty",
+      forecastTitle: "Prognoza na koniec miesiąca",
+      projectedExpenses: "Przewidywane wydatki",
+      projectedBalance: "Przewidywany bilans",
+      safePerDay: "Bezpiecznie na dzień",
+      forecastSubtitle: "Przy obecnym tempie wydatków",
+      forecastClosedSubtitle: "Miesiąc jest już zamknięty",
+      insightsTitle: "Twoje wskazówki",
+      expenseCategoriesTitle: "Wydatki według kategorii",
+      incomeExpenseTrendsTitle: "Wpływy i wydatki",
+      trendAction: "Zobacz szczegóły",
+      emptyStatisticShort: "Brak",
+      emptyStatisticValue: "Brak wydatków",
+      summary: {
+        income: "Wpływy",
+        expense: "Wydatki",
+        balance: "Bilans",
+      },
+      stats: {
+        mostExpensiveDay: "Najdroższy dzień",
+        noSpendDays: "Dni bez wydatków",
+        averageExpense: "Średni wydatek",
+        operationCount: "Liczba operacji",
+        perOperation: "na operację",
+        inMonth: "w tym miesiącu",
+        days: "dni",
+      },
+      detail: {
+        insightLabel: "Szczegóły wskazówki",
+        statisticLabel: "Szczegóły statystyki",
+        conclusionLabel: "Co to oznacza",
+        recommendationLabel: "Praktyczny wniosek",
+        closeButton: "Zamknij",
+      },
+      tags: {
+        positive: "Brawo!",
+        neutral: "Warto wiedzieć",
+        warning: "Uwaga",
+      },
+      templates: {
+        expenseIncreaseTitle: "Wydatki są wyższe niż w {month}",
+        expenseIncreaseSummary: "To o {amount} więcej ({percent}) niż miesiąc wcześniej.",
+        expenseIncreaseRecommendation: "Sprawdź kategorie z największym wzrostem i zdecyduj, które wydatki można ograniczyć jeszcze w tym miesiącu.",
+        incomeIncreaseTitle: "Wpływy wzrosły względem {month}",
+        incomeIncreaseSummary: "Wpływy są wyższe o {amount} ({percent}).",
+        incomeIncreaseRecommendation: "Jeśli ten wzrost nie jest jednorazowy, warto przeznaczyć część nadwyżki na bufor lub cel oszczędnościowy.",
+        topCategoryShareTitle: "Największy udział ma {category}",
+        topCategoryShareSummary: "Ta kategoria odpowiada za {percent} wydatków, czyli {amount} w tym miesiącu.",
+        topCategoryShareRecommendation: "Największa kategoria najszybciej zmienia cały wynik miesiąca, więc tam najlepiej szukać realnych oszczędności.",
+        healthyBalanceTitle: "Duża część wpływów zostaje w budżecie",
+        healthyBalanceSummary: "Po wydatkach pozostaje {amount}, czyli {percent} miesięcznych wpływów.",
+        healthyBalanceRecommendation: "To dobry moment, aby zabezpieczyć część nadwyżki zamiast pozwolić jej rozpłynąć się w kolejnych wydatkach.",
+        budgetPressureTitle: "Prognoza sygnalizuje napięty koniec miesiąca",
+        budgetPressureSummary: "Przy obecnym tempie może zostać {amount} bilansu i tylko {daily} bezpiecznie na dzień.",
+        budgetPressureRecommendation: "Wstrzymaj mniej pilne zakupy i obserwuj wydatki codzienne, bo one najszybciej pogarszają końcowy wynik.",
+        mostExpensiveDaySummary: "Najwięcej wydatków przypadło na {date}. Łącznie {amount}.",
+        mostExpensiveDayRecommendation: "Sprawdź, czy duże wydatki z tego dnia były planowane. Jeśli nie, warto oznaczać takie skoki i wracać do nich przy planowaniu kolejnego miesiąca.",
+        noSpendDaysSummary: "W {month} było {count} dni bez żadnego wydatku.",
+        noSpendDaysRecommendation: "Dni bez wydatków pomagają utrzymać rytm budżetu. Jeśli chcesz poprawić wynik, zacznij od zwiększania właśnie takich dni.",
+        averageExpenseSummary: "Średni wydatek wyniósł {amount} przy {count} wydatkach.",
+        averageExpenseRecommendation: "Porównuj tę wartość między miesiącami. Gdy rośnie bez wyraźnej przyczyny, zwykle oznacza droższe codzienne decyzje, a nie pojedynczy wyjątek.",
+        operationCountSummary: "W tym miesiącu zapisano {count} operacji: {incomeCount} wpływów i {expenseCount} wydatków.",
+        operationCountRecommendation: "Większa liczba zapisów zwykle daje lepszy obraz budżetu. Jeśli zapisów jest mało, wnioski z analizy mogą być mniej trafne.",
+        categoryBreakdownRecommendation: "Największa kategoria zwykle daje najszybszy efekt po zmianie nawyków, dlatego tam warto zacząć szukać oszczędności.",
+        trendRecommendation: "Porównuj wynik miesiąca z wpływami i wydatkami razem. Gdy wydatki rosną szybciej niż wpływy, trend pogarsza się nawet przy dodatnim bilansie.",
+        forecastSummary: "Prognoza opiera się na wpływach i wydatkach z wybranego miesiąca. Dla bieżącego miesiąca wykorzystuje aktualne tempo wydatków, aby oszacować wynik na koniec okresu.",
+        forecastRecommendation: "Traktuj tę sekcję jako szybki sygnał kierunku. Jeśli przewidywany bilans spada lub bezpieczna kwota na dzień jest niska, warto wcześniej ograniczyć mniej pilne wydatki.",
+      },
+    },
     addTransaction: {
       createTitle: "Dodaj operację",
       editTitle: "Edytuj operację",
@@ -370,6 +571,52 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       selectCategoryManageLink: "Zarządzaj kategoriami",
       selectCategorySaveButton: "Zapisz wybór",
       operationMonthAutoNote: "Miesiąc operacji jest uzupełniany automatycznie na podstawie podanej daty i nie można go zmienić ręcznie.",
+    },
+    categories: {
+      title: "Kategorie",
+      subtitle: "Zarządzaj kategoriami wydatków i wpływów",
+      searchPlaceholder: "Szukaj kategorii",
+      searchLabel: "Szukaj kategorii",
+      expenseTab: "Wydatki",
+      incomeTab: "Wpływy",
+      categoryCount: "kategorii",
+      usedCategoryCount: "z operacjami",
+      unusedCategoryCount: "bez operacji",
+      operationCount: "operacji",
+      emptyTitle: "Brak kategorii",
+      emptyText: "Dodaj pierwszą kategorię dla tego typu operacji.",
+      addTitle: "Dodaj kategorię",
+      editTitle: "Edytuj kategorię",
+      nameLabel: "Nazwa kategorii",
+      namePlaceholder: "Np. Zdrowie",
+      colorLabel: "Kolor kategorii",
+      moreColors: "Więcej kolorów",
+      colorPickerTitle: "Wybierz własny kolor",
+      customColorLabel: "Kolor w formacie #RRGGBB",
+      customColorPlaceholder: "#2563EB",
+      iconLabel: "Ikona kategorii",
+      moreIcons: "Więcej ikon",
+      lessIcons: "Mniej ikon",
+      saveNew: "Dodaj kategorię",
+      saveChanges: "Zapisz zmiany",
+      editLabel: "Edytuj kategorię",
+      deleteLabel: "Usuń kategorię",
+      deleteTitle: "Usunąć kategorię?",
+      deleteText: "Tej akcji nie można cofnąć.",
+      deleteConfirm: "Usuń",
+      deleteFailedTitle: "Nie można usunąć kategorii",
+    },
+    openingBalance: {
+      title: "Saldo początkowe",
+      subtitle: "Ustaw ręczne saldo na początek wybranego miesiąca.",
+      monthLabel: "Miesiąc przypisania",
+      amountLabel: "Saldo początkowe",
+      amountPlaceholder: "0,00",
+      currentOpeningBalance: "Obecne saldo początkowe",
+      calculatedClosingBalance: "Przewidywane saldo końcowe",
+      explanation: "Zmiana salda początkowego wpłynie na saldo wybranego miesiąca i kolejnych miesięcy.",
+      saveButton: "Zapisz saldo początkowe",
+      amountError: "Wpisz prawidłową kwotę.",
     },
     more: {
       title: "Więcej",
@@ -418,6 +665,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     },
     themes: {
       light: "Jasny",
+      dark: "Ciemny",
     },
     currencies: {
       PLN: "PLN (zł)",
@@ -437,6 +685,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       "month-format-invalid": "Miesiąc przypisania musi mieć format YYYY-MM.",
       "month-invalid": "Miesiąc przypisania jest nieprawidłowy.",
       "category-name-required": "Nazwa kategorii jest wymagana.",
+      "category-name-too-long": "Nazwa kategorii nie może mieć więcej niż 50 znaków.",
       "category-name-duplicate": "Kategoria o tej nazwie już istnieje dla tego typu.",
       "category-in-use": "Nie można usunąć tej kategorii, ponieważ jest przypisana do istniejących operacji. Najpierw usuń powiązane operacje lub zmień ich kategorię.",
       "category-not-found": "Nie znaleziono kategorii.",
@@ -450,7 +699,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     tabs: {
       dashboard: "Dashboard",
       operations: "Operations",
-      analytics: "Analytics",
+      analytics: "Analysis",
       more: "More",
     },
     common: {
@@ -559,6 +808,83 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       transactionExpense: "Expense",
       operationFallback: "Operation",
     },
+    analytics: {
+      title: "Analysis",
+      noDataTitle: "No data to analyze",
+      noDataText: "Add operations to see budget interpretation and locally generated insights.",
+      noComparison: "No comparison",
+      versusPrevious: "vs",
+      paceUsedIncomeLabel: "of income used",
+      remainingDaysTemplate: "{count} days left in this month",
+      remainingDaysClosed: "This month is already closed",
+      forecastTitle: "End-of-month forecast",
+      projectedExpenses: "Projected expenses",
+      projectedBalance: "Projected balance",
+      safePerDay: "Safe per day",
+      forecastSubtitle: "At the current spending pace",
+      forecastClosedSubtitle: "This month is already closed",
+      insightsTitle: "Your insights",
+      expenseCategoriesTitle: "Expenses by category",
+      incomeExpenseTrendsTitle: "Income and expenses",
+      trendAction: "See details",
+      emptyStatisticShort: "None",
+      emptyStatisticValue: "No expenses",
+      summary: {
+        income: "Income",
+        expense: "Expenses",
+        balance: "Result",
+      },
+      stats: {
+        mostExpensiveDay: "Most expensive day",
+        noSpendDays: "No-spend days",
+        averageExpense: "Average expense",
+        operationCount: "Operation count",
+        perOperation: "per operation",
+        inMonth: "this month",
+        days: "days",
+      },
+      detail: {
+        insightLabel: "Insight details",
+        statisticLabel: "Statistic details",
+        conclusionLabel: "What it means",
+        recommendationLabel: "Practical takeaway",
+        closeButton: "Close",
+      },
+      tags: {
+        positive: "Good",
+        neutral: "Worth knowing",
+        warning: "Warning",
+      },
+      templates: {
+        expenseIncreaseTitle: "Expenses are higher than in {month}",
+        expenseIncreaseSummary: "That is {amount} more ({percent}) than a month earlier.",
+        expenseIncreaseRecommendation: "Review the categories with the biggest increase and decide which costs can still be reduced this month.",
+        incomeIncreaseTitle: "Income increased versus {month}",
+        incomeIncreaseSummary: "Income is higher by {amount} ({percent}).",
+        incomeIncreaseRecommendation: "If this rise is not one-off, consider routing part of the extra cash into a buffer or savings goal.",
+        topCategoryShareTitle: "{category} has the biggest share",
+        topCategoryShareSummary: "This category accounts for {percent} of spending, or {amount}, this month.",
+        topCategoryShareRecommendation: "Your biggest category changes the monthly result the fastest, so it is usually the best place to look for meaningful savings.",
+        healthyBalanceTitle: "A large share of income stays in the budget",
+        healthyBalanceSummary: "After spending, {amount} remains, which is {percent} of monthly income.",
+        healthyBalanceRecommendation: "This is a good moment to protect part of the surplus before it gets absorbed by later spending.",
+        budgetPressureTitle: "The forecast points to a tighter month-end",
+        budgetPressureSummary: "At the current pace, the result may end at {amount} and only {daily} safely per day.",
+        budgetPressureRecommendation: "Pause less urgent purchases and watch daily spending first, because that is what usually moves the closing result fastest.",
+        mostExpensiveDaySummary: "The highest spending happened on {date}. Total: {amount}.",
+        mostExpensiveDayRecommendation: "Check whether those larger costs were planned. If not, mark those spikes and review them again when planning the next month.",
+        noSpendDaysSummary: "There were {count} no-spend days in {month}.",
+        noSpendDaysRecommendation: "No-spend days help keep the budget rhythm stable. If you want to improve the result, increasing these days is often the simplest lever.",
+        averageExpenseSummary: "The average expense was {amount} across {count} expense entries.",
+        averageExpenseRecommendation: "Compare this value across months. When it rises without a clear reason, it usually signals more expensive everyday decisions, not just one outlier.",
+        operationCountSummary: "This month includes {count} operations: {incomeCount} income entries and {expenseCount} expenses.",
+        operationCountRecommendation: "More recorded entries usually means better analysis quality. If the count is low, treat the conclusions as directional rather than final.",
+        categoryBreakdownRecommendation: "The largest category usually gives the fastest visible effect after changing spending habits, so that is the best place to start looking for savings.",
+        trendRecommendation: "Compare the monthly result with income and expenses together. When expenses grow faster than income, the trend worsens even if the result is still positive.",
+        forecastSummary: "This forecast is based on income and expenses from the selected month. For the current month it uses the current spending pace to estimate the end-of-period result.",
+        forecastRecommendation: "Use this section as a quick directional signal. If the projected result drops or the safe-per-day amount is low, it is worth reducing less urgent spending earlier.",
+      },
+    },
     addTransaction: {
       createTitle: "Add operation",
       editTitle: "Edit operation",
@@ -596,6 +922,52 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       selectCategoryManageLink: "Manage categories",
       selectCategorySaveButton: "Save selection",
       operationMonthAutoNote: "The operation month is filled automatically from the provided date and cannot be edited manually.",
+    },
+    categories: {
+      title: "Categories",
+      subtitle: "Manage expense and income categories",
+      searchPlaceholder: "Search categories",
+      searchLabel: "Search categories",
+      expenseTab: "Expenses",
+      incomeTab: "Income",
+      categoryCount: "categories",
+      usedCategoryCount: "with operations",
+      unusedCategoryCount: "without operations",
+      operationCount: "operations",
+      emptyTitle: "No categories",
+      emptyText: "Add the first category for this operation type.",
+      addTitle: "Add category",
+      editTitle: "Edit category",
+      nameLabel: "Category name",
+      namePlaceholder: "For example, Health",
+      colorLabel: "Category color",
+      moreColors: "More colors",
+      colorPickerTitle: "Choose a custom color",
+      customColorLabel: "Color in #RRGGBB format",
+      customColorPlaceholder: "#2563EB",
+      iconLabel: "Category icon",
+      moreIcons: "More icons",
+      lessIcons: "Fewer icons",
+      saveNew: "Add category",
+      saveChanges: "Save changes",
+      editLabel: "Edit category",
+      deleteLabel: "Delete category",
+      deleteTitle: "Delete category?",
+      deleteText: "This action cannot be undone.",
+      deleteConfirm: "Delete",
+      deleteFailedTitle: "Cannot delete category",
+    },
+    openingBalance: {
+      title: "Opening balance",
+      subtitle: "Set a manual balance for the start of the selected month.",
+      monthLabel: "Assigned month",
+      amountLabel: "Opening balance",
+      amountPlaceholder: "0.00",
+      currentOpeningBalance: "Current opening balance",
+      calculatedClosingBalance: "Projected closing balance",
+      explanation: "Changing the opening balance affects the selected month and following months.",
+      saveButton: "Save opening balance",
+      amountError: "Enter a valid amount.",
     },
     more: {
       title: "More",
@@ -644,6 +1016,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
     },
     themes: {
       light: "Light",
+      dark: "Dark",
     },
     currencies: {
       PLN: "PLN (zł)",
@@ -663,6 +1036,7 @@ const translations: Record<LanguageCode, LocalizationStrings> = {
       "month-format-invalid": "Assigned month must use the YYYY-MM format.",
       "month-invalid": "Assigned month is invalid.",
       "category-name-required": "Category name is required.",
+      "category-name-too-long": "Category name cannot be longer than 50 characters.",
       "category-name-duplicate": "A category with this name already exists for this type.",
       "category-in-use": "This category cannot be deleted because it is assigned to existing operations. Delete the linked operations first or change their category.",
       "category-not-found": "Category not found.",

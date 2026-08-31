@@ -1,5 +1,5 @@
 export { brand } from './brand';
-export { baseColorTokens, semanticColorTokens, themeColors } from './colors';
+export { baseColorTokens, darkThemeColors, semanticColorTokens, themeColors } from './colors';
 export { fontFamilies } from './fonts';
 export { radii, spacing } from './layout';
 export { usageNotes } from './notes';

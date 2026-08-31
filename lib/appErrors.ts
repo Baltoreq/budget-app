@@ -6,6 +6,7 @@ export type AppErrorCode =
   | "month-format-invalid"
   | "month-invalid"
   | "category-name-required"
+  | "category-name-too-long"
   | "category-name-duplicate"
   | "category-in-use"
   | "category-not-found"
@@ -22,6 +23,7 @@ const knownAppErrorCodes = [
   "month-format-invalid",
   "month-invalid",
   "category-name-required",
+  "category-name-too-long",
   "category-name-duplicate",
   "category-in-use",
   "category-not-found",
